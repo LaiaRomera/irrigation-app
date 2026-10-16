@@ -1,0 +1,27 @@
+# Secretos y configuración local (.env.example sí se versiona)
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+
+# Entornos virtuales y caché de Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Datos locales de trabajo (se conserva la carpeta, no su contenido)
+data/*
+!data/.gitkeep
+
+# Archivos que genera la extensión GitHub Copilot Toolbox de VS Code
+# (no se ignora todo .github/: ahí irá .github/workflows/)
+.github/copilot-*.md
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
