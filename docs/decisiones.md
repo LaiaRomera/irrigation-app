@@ -35,6 +35,12 @@ El detalle técnico vive en otros documentos:
 - **Gold:** las lecturas de cada ventana se resumen en último valor, media, mínimo y máximo; la meteorología ya es diaria. Un único modelo con salidas a 7 días sirve para la recomendación diaria y la semanal.
 - **Datos necesarios (orientación, sin garantía):** lo que cuenta son los días distintos de información y las estaciones cubiertas, no las filas. Se medirá con una curva de aprendizaje.
 
+### Previsiones meteorológicas
+- **La ET0 la entrega Open-Meteo** ya calculada (FAO-56 Penman-Monteith, mm al día), en la previsión y en el histórico. No se calcula en el proyecto. Es una estimación de su modelo, no una medición. Comprobado con peticiones reales el 16 de octubre de 2026.
+- **El servicio de ejecuciones anteriores solo ofrece valores por horas**: pedir la ET0 o la lluvia diaria da error. Se descargan por horas y se suman por días.
+- **Historial de previsiones para entrenar: se combinan dos orígenes en la misma tabla** (`forecast_data`, distinguidos por `source` y `lead_days`): (A) ejecuciones anteriores, que dan historia desde enero de 2024, y (B) capturas diarias propias, desde que arranque el proceso. Hay que comprobar que los valores de ambos son comparables. Si los sensores tienen datos anteriores a enero de 2024, esa parte no tendrá previsiones reales.
+- Usar el histórico (reanálisis) como si fuera la previsión queda descartado para entrenar: el modelo vería previsiones perfectas y parecería mejor de lo que es.
+
 ### Alertas del MVP
 - Las alertas para el cliente son **agronómicas**: lluvia fuerte prevista y suelo muy seco, y avisos del mismo estilo que interesen al agrónomo.
 - **Los umbrales ("muy seco", "lluvia fuerte") están pendientes**: dependen de parámetros del suelo y de criterio agronómico. No se inventan.
@@ -157,7 +163,8 @@ Notas:
 
 **A verificar al implementar:**
 - Unidades por defecto de las columnas meteorológicas en Open-Meteo.
-- Funcionamiento de la API de ejecuciones anteriores (`lead_days`, y diferencia entre fecha de descarga y de emisión), y qué modelo concreto sirve el reanálisis.
+- API de ejecuciones anteriores: ya verificado que solo ofrece valores por horas. Pendiente: la diferencia entre fecha de descarga y de emisión, si la suma por días coincide con el valor diario de la previsión, y qué modelo concreto sirve el reanálisis.
+- Fecha del primer registro de los sensores, para saber qué parte del histórico tiene previsiones reales asociadas.
 - Compatibilidad de PyTorch con GPU y la versión de Python (3.14 frente a 3.12), y qué GPU exacta es la de 8 GB (se sabe que es NVIDIA GeForce).
 - Modelo de lenguaje concreto, su licencia y requisitos reales de VRAM.
 - Estimar si el almacenamiento gratuito aguanta el histórico y las lecturas: a 15 minutos son unas 35.000 lecturas al año por sensor, y con muchos sensores el gigabyte gratuito de Aiven puede quedarse corto.

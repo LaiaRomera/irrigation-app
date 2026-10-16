@@ -46,6 +46,7 @@ Con esas filas, el modelo tendrá que aprender a responder a esta pregunta: *dad
 - **Decido por días, pero guardo cada 15 minutos.** Los sensores miden cada 15 minutos (96 lecturas al día por sensor), mientras que la meteorología me llega por días. La recomendación es diaria y la semanal es, simplemente, la secuencia de 7 días, así que decido en unidades diarias. Guardo todas las lecturas de 15 minutos tal como llegan, sin resumirlas, y solo las convierto en variables diarias al construir el dataset final (el Gold, apartado 4.3). Así no pierdo información.
 - **Hora de corte.** La recomendación se calcula con los datos que se guardan a las 05:00. Por eso cada "día" es la ventana de las 24 horas que termina a las 05:00, tanto para lo que el modelo recibe como para lo que debe predecir. Si usara la media del día completo, estaría mirando lecturas de la tarde, que a las 05:00 todavía no existen, y el modelo parecería mejor de lo que realmente es (esto se llama fuga de información del futuro). [COMPLETAR: confirmar si las 05:00 son hora local de la parcela o UTC]
 - **Histórico.** Lo ideal sería al menos una temporada completa, para que el modelo vea distintas estaciones. Dispongo de unos 25.000 registros de varios sensores y parcelas. Si todos fueran lecturas de 15 minutos, equivaldrían a unos 260 días de sensor en total (25.000 / 96), repartidos entre todos los sensores, lo que sería poco para deep learning. [COMPLETAR: número exacto de sensores y de parcelas, fecha del primer y del último registro, si los 25.000 son lecturas de 15 minutos, y si cubren varias estaciones del año]
+- **Histórico de previsiones.** Para entrenar necesito, además, saber qué se había previsto en cada momento del pasado. Open-Meteo lo ofrece (servicio de ejecuciones anteriores) a partir de enero de 2024 para la mayoría de modelos, y yo empezaré a guardar mis propias capturas diarias de la previsión (apartado 2.2). Si las lecturas de los sensores son anteriores a enero de 2024, esa parte inicial no tendrá previsiones reales asociadas. [COMPLETAR: fecha del primer registro de los sensores]
 
 ---
 
@@ -75,9 +76,17 @@ Open-Meteo es un servicio gratuito de datos meteorológicos, accesible por API (
 |---|---|---|
 | **Previsión** (`api.open-meteo.com/v1/forecast`) | Previsión diaria de hasta 16 días (por defecto, 7): temperaturas, humedad, viento, lluvia, ET0 y el código del tiempo | Se actualiza cada 1 a 12 horas, según el modelo. La ET0 la calcula con el método FAO-56 Penman-Monteith |
 | **Histórico** (`archive-api.open-meteo.com/v1/archive`) | Lo que realmente ocurrió, reconstruido por modelos (lo que se llama un *reanálisis*). Fuentes: ERA5 (desde 1940, unos 25 km), ERA5-Land (desde 1950, unos 11 km) y el modelo IFS (desde 2017, unos 9 km) | ERA5 llega con unos 5 días de retraso, y los últimos días pueden revisarse. No incluye el índice UV ni la probabilidad de precipitación |
-| **Ejecuciones anteriores** (*Previous Runs*) | Lo que el modelo **había previsto** días atrás: para un día concreto, lo previsto con 1, 2... hasta 7 días de antelación | La mayoría de modelos están archivados desde enero de 2024 |
+| **Ejecuciones anteriores** (*Previous Runs*) | Lo que el modelo **había previsto** días atrás: para un día concreto, lo previsto con 1, 2... hasta 7 días de antelación. **Solo ofrece valores por horas**, no diarios (lo comprobé con peticiones reales: pedir la ET0 o la lluvia diaria a este servicio da error), así que los sumo yo por días | La mayoría de modelos están archivados desde enero de 2024 |
 
 Las unidades por defecto son °C para la temperatura, km/h para el viento y mm para la lluvia. Lo importante de las ejecuciones anteriores es que me permiten comparar, más adelante, lo que se previó con lo que ocurrió.
+
+**Sobre la ET0.** No la calculo yo: la entrega Open-Meteo ya calculada, en mm al día, tanto en la previsión como en el histórico. Es una estimación de su modelo (método FAO-56 Penman-Monteith), no una medición. En el servicio de ejecuciones anteriores solo está disponible por horas.
+
+**Cómo consigo las previsiones del pasado.** Combino dos orígenes:
+- **A. Ejecuciones anteriores**, descargadas por horas y sumadas por días: me dan historia desde enero de 2024.
+- **B. Mis propias capturas diarias** de la previsión, que guardo desde que arranque el proceso.
+
+Las dos se guardan en la misma tabla, distinguiendo el origen y la antelación en días, y en el dataset final se tratan igual. [COMPLETAR: comprobar que los valores de A y de B son comparables]
 
 ### 2.3. Viabilidad y alternativas
 
@@ -139,6 +148,7 @@ Es el paso donde corrijo y ordeno. El resultado se guarda en las tablas de mi ba
 | **Nulos** | Reviso qué columnas tienen valores vacíos y decido caso por caso. [COMPLETAR: recuento real de nulos por columna] |
 | **Unidades** | Compruebo que las de Open-Meteo son las esperadas (°C, km/h, mm) y confirmo la unidad de los sensores con la empresa |
 | **Previsión y histórico, separados** | Las previsiones nunca se sobrescriben con el histórico: guardo cada captura con su antelación en días, para poder medir después los errores. El índice UV de la previsión no se arrastra al histórico, porque en el histórico no existe |
+| **Previsiones de dos orígenes** | Las ejecuciones anteriores llegan por horas y las sumo por días; mis capturas diarias llegan ya por días. Las dos se guardan en la misma tabla (`forecast_data`), distinguidas por el origen y por la antelación en días |
 | **Revisiones del histórico** | Open-Meteo puede corregir los últimos días, así que cada día vuelvo a pedir una ventana reciente y actualizo esos valores |
 | **Uniones (*joins*)** | Uno cada lectura de un sensor con su parcela y con la meteorología de esa parcela en ese día, teniendo en cuenta la zona horaria de la parcela |
 
@@ -174,7 +184,7 @@ El flujo completo se ejecuta en tres pasos: descargar y guardar el Bronze, limpi
 
 ## 5. Riesgos y limitaciones
 
-- **Datos que me faltan.** No tengo los riegos aplicados ni los parámetros del cultivo y del suelo, que influyen mucho en cómo cambia la humedad. Tampoco tengo todavía confirmado qué mide exactamente cada sensor ni en qué unidad.
+- **Datos que me faltan.** No tengo los riegos aplicados ni los parámetros del cultivo y del suelo, que influyen mucho en cómo cambia la humedad. Tampoco tengo todavía confirmado qué mide exactamente cada sensor ni en qué unidad. Además, las previsiones pasadas solo existen desde enero de 2024.
 - **Cantidad de datos.** Unos 25.000 registros pueden ser pocos para deep learning: si fueran lecturas de 15 minutos, serían unos 260 días de sensor, y lo que cuenta no son las filas, sino los días distintos de información y que haya varias estaciones. Como regla orientativa, los modelos clásicos pueden funcionar con unos pocos miles de filas y el deep learning pide varios miles de ejemplos de varios sensores. Lo comprobaré con una curva de aprendizaje (entrenar con cantidades crecientes de datos y ver si el error sigue bajando). Si hay pocos datos, usaré un único modelo para todos los sensores, una red pequeña y compararé siempre con modelos sencillos.
 - **Sesgos.** El histórico de Open-Meteo es un reanálisis con una resolución de 9 a 25 km, no una medición en la parcela, así que puede no reflejar el microclima real. Además, las lecturas interpoladas por la empresa pueden ocultar fallos de sensor: ya son un dato "estimado" y, en un mes, puede haber unos 130 sin que signifique un error.
 - **Dependencia de las fuentes.** Si Open-Meteo dejara de estar disponible, usaría el reanálisis de Copernicus; si fallaran los datos de Agrodevices, un conjunto público de humedad del suelo para demostrar el método.
