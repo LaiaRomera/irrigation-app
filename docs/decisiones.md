@@ -31,15 +31,23 @@ El detalle técnico vive en otros documentos:
 - En esta aplicación se guarda el valor ya normalizado más una marca de interpolación (`is_interpolated`). **Los originales no se guardan aquí**: viven en la empresa. Esto cambia el principio de "conservar originales" para los sensores.
 - Interpolar es algo habitual: en un mes puede haber unos 130 registros interpolados sin que sea un error. Referencia para el detector futuro.
 - **Resolución:** los sensores miden cada 15 minutos (96 lecturas al día por sensor). Se guardan **sin resumir** en `sensor_reading`. Las decisiones son **diarias**: la recomendación diaria usa el primer día de la predicción y la semanal, los siete.
-- **Hora de corte:** cada "día" es la ventana de 24 horas que termina a las 05:00, porque la recomendación se calcula con los datos guardados a esa hora; así el modelo no usa lecturas posteriores al momento de decidir (fuga de información del futuro). Zona horaria de las 05:00 (local o UTC): pendiente.
+- **Hora de corte:** cada "día" es la ventana de 24 horas que termina a las 05:00, porque la recomendación se calcula con los datos guardados a esa hora; así el modelo no usa lecturas posteriores al momento de decidir (fuga de información del futuro). Las 05:00 son UTC (según el documento de entrega).
 - **Gold:** las lecturas de cada ventana se resumen en último valor, media, mínimo y máximo; la meteorología ya es diaria. Un único modelo con salidas a 7 días sirve para la recomendación diaria y la semanal.
 - **Datos necesarios (orientación, sin garantía):** lo que cuenta son los días distintos de información y las estaciones cubiertas, no las filas. Se medirá con una curva de aprendizaje.
 
 ### Previsiones meteorológicas
 - **La ET0 la entrega Open-Meteo** ya calculada (FAO-56 Penman-Monteith, mm al día), en la previsión y en el histórico. No se calcula en el proyecto. Es una estimación de su modelo, no una medición. Comprobado con peticiones reales el 16 de octubre de 2026.
 - **El servicio de ejecuciones anteriores solo ofrece valores por horas**: pedir la ET0 o la lluvia diaria da error. Se descargan por horas y se suman por días.
-- **Historial de previsiones para entrenar: se combinan dos orígenes en la misma tabla** (`forecast_data`, distinguidos por `source` y `lead_days`): (A) ejecuciones anteriores, que dan historia desde enero de 2024, y (B) capturas diarias propias, desde que arranque el proceso. Hay que comprobar que los valores de ambos son comparables. Si los sensores tienen datos anteriores a enero de 2024, esa parte no tendrá previsiones reales.
+- **Historial de previsiones para entrenar: solo las ejecuciones anteriores de Open-Meteo** (historia desde enero de 2024), sin construir un segundo histórico con capturas propias (decisión de Laia, 16 de octubre de 2026; sustituye a la idea de combinar dos orígenes). La previsión de cada día se descarga igualmente para operar y queda reflejada en `recommendation.inputs_snapshot`. Pendiente: comprobar que los valores de las ejecuciones anteriores se parecen a los de la previsión real, porque el modelo se entrena con unos y se usa con los otros. Si los sensores tienen datos anteriores a enero de 2024, esa parte no tendrá previsiones reales.
+- **Para qué se guarda el histórico:** para entrenar y evaluar. Una vez entrenado, para predecir solo hace falta una ventana reciente (los últimos 7 días de las entradas del modelo). Se conserva igualmente para reentrenar con más datos y estaciones, comprobar si el modelo sigue acertando y repetir los experimentos. Política de conservación de las lecturas de 15 minutos: pendiente, según el espacio disponible.
 - Usar el histórico (reanálisis) como si fuera la previsión queda descartado para entrenar: el modelo vería previsiones perfectas y parecería mejor de lo que es.
+
+### Imágenes de satélite (Sentinel-2)
+- **Corrección:** el satélite de la plataforma de la empresa no es de la NASA, sino **Sentinel-2**, del programa **Copernicus de la Agencia Espacial Europea (ESA)**, según la demo de la plataforma Zahorí (16 de octubre de 2026).
+- La plataforma descarga las imágenes de Copernicus, calcula el **NDVI** (índice de vegetación) en píxeles de 10 m, lo agrupa por sector de la parcela y lo combina con las sondas en un diagnóstico. En la demo el pase es cada 2,5 días y se descartan las imágenes con nubes.
+- **Papel en este proyecto: ninguno por ahora.** La recomendación de riego no lo necesita (balance de agua con la humedad del suelo, la lluvia, la ET0 y los parámetros de la parcela). Decisión de Laia el 16 de octubre de 2026: se **elimina por completo del documento de entrega**. Si algún día se usara, haría falta una tabla nueva (una fila por sector y fecha de pase), que no está en el esquema de 10 tablas, y columnas opcionales en el Gold. Posible experimento si sobra tiempo: comparar el modelo con y sin NDVI.
+- **Licencia:** datos Copernicus Sentinel de acceso libre y gratuito, citando la fuente ("Copernicus Sentinel data" y el año).
+- Según la demo (pendiente de confirmar): las sondas son de tipo FDR, miden a 10, 20, 30 y 50 cm y envían datos cada 12 horas; la plataforma gestiona riegos programados.
 
 ### Alertas del MVP
 - Las alertas para el cliente son **agronómicas**: lluvia fuerte prevista y suelo muy seco, y avisos del mismo estilo que interesen al agrónomo.
@@ -146,7 +154,8 @@ Notas:
 - Qué miden los sensores (el nombre `SMM` sugiere humedad del suelo, sin confirmar) y en qué unidad, calibración, y cómo identifican cada sensor y su parcela. Zona horaria de las lecturas.
 - Estructura exacta de las marcas `SMM` y `SMMi`: ¿una columna con ese texto o dos columnas?
 - Los 25.000 registros: número de sensores y parcelas, frecuencia de medida, rango de fechas, y si hay lecturas de las distintas estaciones del año.
-- Diccionario de sensores, histórico adicional, registros de riego y parámetros agronómicos.
+- Diccionario de sensores, histórico adicional, registros de riego (la demo muestra riegos programados: confirmar si hay un registro que se pueda usar) y parámetros agronómicos.
+- Imágenes de satélite (fuera del proyecto por ahora): solo si algún día se usan, confirmar el acceso a los NDVI de la plataforma, su formato y su histórico.
 - Frecuencia de ingesta de sensores: una vez al día, a las 05:00, junto con la meteorología (según Laia, en principio). El motor debe tener en cuenta la antigüedad del estado del suelo.
 
 **De diseño:**
