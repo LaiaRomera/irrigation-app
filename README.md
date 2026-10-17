@@ -2,7 +2,7 @@
 
 Plataforma web de **recomendaciones de riego explicables** para parcelas agrícolas. Combina datos de sensores de suelo (Agrodevices) con la previsión y el histórico meteorológico de Open-Meteo, y explica **cuánto regar, cuándo y por qué** a partir de una recomendación calculada. No acciona válvulas.
 
-Alcance en tres capas: un **modelo de deep learning predice** la humedad del suelo, un **motor determinista decide** la recomendación y un **modelo de lenguaje ajustado (fine-tuning) explica** el resultado, de forma integrada y automática. Incluye informes diario y semanal, alertas agronómicas y acceso de cada usuario a sus parcelas. Opcional: corrección del sesgo meteorológico. Fuera del MVP: detector de anomalías en sensores. Todo gratuito y en el ordenador de la autora.
+Alcance en tres capas: un **modelo de machine learning predice** la humedad del suelo, un **motor determinista decide** la recomendación y un **modelo de lenguaje ajustado (fine-tuning) explica** el resultado, de forma integrada y automática. Incluye informes diario y semanal descargables en PDF (con gráficas y explicaciones en lenguaje natural), alertas agronómicas y acceso de cada usuario a sus parcelas. Opcional: corrección del sesgo meteorológico. Fuera del MVP: detector de anomalías en sensores. Todo gratuito y en el ordenador de la autora.
 
 ## Estado (14 de octubre de 2026)
 

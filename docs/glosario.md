@@ -39,7 +39,8 @@ Los identificadores del código van en inglés; esta tabla da su equivalente en 
 | SMM / SMMi | marca de lectura real / interpolada | Marca de los datos de Agrodevices; estructura exacta por confirmar |
 | value | valor normalizado | Valor tras la normalización de la empresa; no es el original, que es la trama hexadecimal |
 | baseline | línea base | Método sencillo con el que se compara un modelo para saber si de verdad aporta |
-| deep learning | aprendizaje profundo | Redes neuronales; aquí, para predecir series temporales y para el modelo de lenguaje |
+| deep learning | aprendizaje profundo | Redes neuronales; aquí, solo en el modelo de lenguaje |
+| machine learning clásico | aprendizaje automático clásico | Modelos como regresiones o árboles de decisión (*gradient boosting*); aquí, para predecir la humedad del suelo |
 | LLM | modelo de lenguaje grande | Modelo que genera texto; aquí redacta las explicaciones de los informes |
 | fine-tuning | ajuste fino | Entrenar un poco más un modelo ya existente con ejemplos propios |
 | QLoRA | ajuste fino con adaptadores y cuantización | Permite ajustar un modelo en una GPU pequeña entrenando solo unos pocos parámetros |

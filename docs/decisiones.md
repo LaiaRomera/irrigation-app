@@ -16,12 +16,13 @@ El detalle técnico vive en otros documentos:
 ### Alcance del TFM y componentes de IA
 - **Requisito:** el TFM debe aplicar lo aprendido en el máster (machine learning, deep learning e IA generativa). El documento original de definición del TFM **ya no manda en el alcance**; el resto de decisiones (arquitectura, base de datos, usuarios) se mantiene.
 - **Tres capas:** el modelo de ML/DL **predice**, las reglas del motor determinista **deciden** y un modelo de lenguaje **explica**. Ninguna IA calcula la dosis de riego: no sería reproducible ni auditable, consumiría más tokens, y no hay ejemplos de la dosis correcta con los que entrenar un modelo supervisado.
-- **Modelo principal (B): previsión de la humedad del suelo con deep learning de series temporales**, a partir de las lecturas de los sensores y de la meteorología. Permite recomendar riegos de días futuros (informe semanal). Se evalúa contra baselines: persistencia, regresión sencilla y balance de agua determinista. Datos: unos 25.000 registros de Agrodevices, de varios sensores y parcelas, que Laia puede usar (pendiente de verificar: número de sensores y parcelas, frecuencia de medida y rango de fechas).
+- **Modelo principal (B): previsión de la humedad del suelo con machine learning clásico** (decisión de Laia, 17 de octubre de 2026; el deep learning se aplica en el modelo de lenguaje; algoritmo concreto por decidir, candidatos *gradient boosting* o regresión regularizada), a partir de las lecturas de los sensores y de la meteorología. Permite recomendar riegos de días futuros (informe semanal). Se evalúa contra baselines: persistencia, regresión sencilla y balance de agua determinista. Datos: unos 25.000 registros de Agrodevices, de varios sensores y parcelas, que Laia puede usar (pendiente de verificar: número de sensores y parcelas, frecuencia de medida y rango de fechas).
 - **Corrección del sesgo de la previsión meteorológica (A): opcional**, solo si da tiempo. Su valor depende del horizonte: a un día vista el error probablemente no cambie la dosis, pero sí puede importar en los días 3 a 7 del informe semanal. Habría que medir cuánto cambia la dosis recomendada al corregir.
 - **IA generativa: fine-tuning de un modelo de lenguaje abierto y pequeño** en la GPU local (QLoRA), **integrado en el código y automático**: tras el cálculo del motor, una función genera la explicación sin intervención de nadie. Es el único uso aceptado de un LLM en el proyecto.
 - **Datos de entrenamiento del LLM** (pares resultado del motor → explicación en español): **generación programática más generación con ayuda de una IA, revisando una muestra**. Debe declararse en la memoria. Idealmente, con apoyo agronómico en la revisión.
 - **Fidelidad de las cifras:** el modelo genera el texto con huecos que el código rellena con las cifras del motor, y una comprobación automática compara el texto con las cifras. Si falla, se usa la plantilla, que se mantiene como respaldo.
 - **Evaluación del LLM:** modelo ajustado frente a la plantilla y frente al mismo modelo sin ajustar, con casos reservados solo para evaluar; fidelidad de cifras, unidades, motivos y comunicación de la información faltante.
+- **Entregable del MVP:** debe poder **generar una recomendación de riego en PDF, con gráficas y explicaciones en lenguaje natural** (decisión de Laia, 17 de octubre de 2026). El texto lo redacta el modelo de lenguaje ajustado, con la plantilla como respaldo; las gráficas las genera la aplicación a partir de los datos y las predicciones. El PDF no se guarda en la base de datos: se genera al pedirlo a partir de `report.content` y `report.text_es` (propuesta; a confirmar).
 - **Recursos:** todo **gratuito y en el ordenador de Laia**: Intel Core i7-11370H, 16 GB de RAM y GPU NVIDIA GeForce de 8 GB (además de una Intel Iris). Plazo: **dos meses**. El plan semanal se hace cuando esté todo claro.
 
 ### Datos de sensores
@@ -121,7 +122,7 @@ Lista de entidades y diccionario en [base_de_datos.md](base_de_datos.md). Son 10
 | Web | Streamlit Community Cloud | Sin implementar. A verificar: que funcione el login; el cifrado de los secretos no se detalla en la documentación |
 | Login | Auth0 con `st.login` (OIDC, usuario y contraseña) | **Probado en local el 8 de octubre de 2026 con éxito.** Plan gratuito de Auth0: hasta 25.000 usuarios activos al mes, sin tarjeta. Pendiente: Streamlit Community Cloud (ver nota) |
 | Login, plan B | `streamlit-authenticator` | Si permite usuarios desde BBDD en lugar de YAML |
-| Entorno de ML | PyTorch con GPU NVIDIA, en un entorno aparte | No he podido confirmar que PyTorch publique versiones con GPU para Python 3.14 en Windows; Laia también tiene Python 3.12 instalado. Verificar en pytorch.org antes de instalar |
+| Entorno de ML | PyTorch con GPU NVIDIA, en un entorno aparte, **solo para el modelo de lenguaje**; el modelo de predicción es clásico y no necesita GPU | No he podido confirmar que PyTorch publique versiones con GPU para Python 3.14 en Windows; Laia también tiene Python 3.12 instalado. Verificar en pytorch.org antes de instalar |
 | Modelo de lenguaje | Modelo abierto de 3 a 8 mil millones de parámetros con QLoRA (Unsloth o PEFT) | Según guías secundarias, en 8 GB caben 3–4B con holgura y 7–8B muy justos. Confirmar con la documentación oficial y con una prueba. Modelo concreto, licencia y calidad en español, por decidir |
 
 Notas:
@@ -147,6 +148,7 @@ Notas:
 12. **Alertas de calidad de datos solo para el personal de la empresa**, cuando existan roles.
 13. Modelo de detección de anomalías en lecturas reales, evaluado contra las reglas y con fallos sintéticos, solo si hay datos suficientes y la comparación lo justifica.
 14. Corrección del sesgo meteorológico, si no entra antes como opcional (A).
+15. **Conocimiento agronómico con RAG** (búsqueda de fragmentos de documentación técnica, por ejemplo la guía FAO-56, para que el modelo de lenguaje los use al explicar). Decisión de Laia el 17 de octubre de 2026: queda como mejora futura. Motivos: hace falta reunir los documentos y comprobar su licencia, añade un índice de búsqueda, y un modelo pequeño ajustado puede mezclar el texto recuperado con las cifras del motor, además de ser más difícil de evaluar. Mientras tanto, alternativa barata: asociar a cada regla del motor un texto explicativo fijo de una fuente fiable.
 
 ## 4. Pendientes
 
@@ -164,6 +166,7 @@ Notas:
 - Reglas agronómicas del motor y tratamiento de datos insuficientes, con apoyo agronómico.
 - Dónde viven los valores de referencia por cultivo: archivo de configuración o tabla.
 - Nombre en inglés de la carpeta del motor de riego.
+- Informe en PDF (ya es requisito del MVP): elegir la librería de generación de PDF (por evaluar, en Windows), diseñar la plantilla y decidir qué gráficas lleva (por ejemplo, humedad del suelo pasada y prevista por profundidad, lluvia y ET0 previstas, y la dosis recomendada). Es una capa de presentación que se hace cuando el informe ya funcione.
 - Elegir una parcela, cultivo y sector como caso inicial.
 - Cómo se calcula la perspectiva futura del informe semanal (probablemente con el modelo B).
 - Primera consulta de alertas: cuántas se muestran; y momento exacto de actualización del marcador.

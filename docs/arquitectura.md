@@ -11,9 +11,9 @@ Una plataforma web sencilla para una empresa que fabrica sensores de suelo agrí
 Es un Trabajo Fin de Máster con potencial de portfolio y evolución empresarial. Se prioriza la calidad de los datos, el cálculo y la explicación, manteniendo el desarrollo web acotado.
 
 **Alcance (acordado el 14 de octubre de 2026):** el TFM debe aplicar lo aprendido en el máster (machine learning, deep learning e IA generativa), así que los modelos son el centro del proyecto y la aplicación web es el vehículo.
-- **Modelo de deep learning** que predice la humedad del suelo, para recomendar riegos de días futuros.
+- **Modelo de machine learning clásico** que predice la humedad del suelo, para recomendar riegos de días futuros.
 - **Motor determinista de riego explicable**, que decide a partir de esas predicciones.
-- **Informes diario y semanal**, con una plantilla como respaldo y con explicaciones redactadas por un **modelo de lenguaje ajustado** (fine-tuning) e integrado, de forma automática.
+- **Informes diario y semanal**, con una plantilla como respaldo y con explicaciones redactadas por un **modelo de lenguaje ajustado** (fine-tuning) e integrado, de forma automática. El MVP debe poder generar la recomendación en **PDF descargable, con gráficas y explicaciones en lenguaje natural**.
 - **Alertas agronómicas** (lluvia fuerte prevista, suelo muy seco).
 - **Acceso de usuarios a sus parcelas.**
 
@@ -89,7 +89,7 @@ Una alerta persistente **no se crea de nuevo en cada ejecución**: si ya hay una
 
 1. El usuario pulsa "solicitar informe de hoy" en una parcela suya.
 2. La función del paquete comprueba el permiso en el servidor, ejecuta el motor con los datos guardados, y guarda la recomendación (una por parcela y día; si se pide otra vez, se actualiza) y el informe.
-3. La página muestra el informe con la **fecha de su recomendación**. Si hoy aún no se ha pedido ninguno, se muestra el último con su fecha, junto al botón de solicitar el de hoy. **Un cálculo antiguo nunca se presenta como actual.**
+3. La página muestra el informe, con un botón para **descargarlo en PDF** (con gráficas y explicaciones en lenguaje natural), y con la **fecha de su recomendación**. Si hoy aún no se ha pedido ninguno, se muestra el último con su fecha, junto al botón de solicitar el de hoy. **Un cálculo antiguo nunca se presenta como actual.**
 
 ### 4.4. Cuando falla una actualización
 
@@ -106,10 +106,10 @@ Los nombres de carpeta son **orientativos**: se crean en cada fase, no antes. So
 | `storage/` | Consultas y escritura en la BBDD, sin perder las referencias a lo usado | Por crear |
 | `alerts/` | Reglas de las alertas agronómicas (lluvia fuerte prevista, suelo muy seco) | Por crear; umbrales pendientes |
 | `quality/` | Detector de anomalías por reglas (interpolación frecuente, sensor mudo) | **Fuera del MVP**, mejora futura |
-| `models/` | Modelo de deep learning de humedad del suelo: entrenamiento (aparte) e inferencia | Por crear |
+| `models/` | Modelo de machine learning de humedad del suelo: entrenamiento (aparte) e inferencia | Por crear |
 | `explanations/` | Modelo de lenguaje ajustado que redacta las explicaciones, y la comprobación de fidelidad de las cifras | Por crear |
 | Motor de riego | Preparación de entradas, cálculo y construcción del resultado, en un mismo módulo | Por crear; **el nombre de la carpeta en inglés (p. ej. `irrigation_engine/`) está pendiente** |
-| `reports/` | Estadísticas y plantilla diaria y semanal; futura adaptación del modelo abierto | Por crear |
+| `reports/` | Estadísticas, plantilla diaria y semanal, gráficas y generación del PDF descargable (librería y maquetación por decidir) | Por crear |
 | `access/` | Filtra las parcelas permitidas por usuario y sirve datos a la interfaz | Por crear |
 | `jobs/` | Coordina la secuencia diaria, evita ejecuciones concurrentes y duplicados, registra resultados parciales | Por crear |
 | `web/` | La interfaz Streamlit | Por crear |
@@ -124,7 +124,7 @@ El TFM debe aplicar machine learning, deep learning e IA generativa. Se reparte 
 
 ```mermaid
 flowchart LR
-    D["Lecturas de sensores<br/>y meteorología"] --> M["Modelo de deep learning<br/>predice la humedad del suelo"]
+    D["Lecturas de sensores<br/>y meteorología"] --> M["Modelo de machine learning<br/>predice la humedad del suelo"]
     M --> R["Motor determinista<br/>decide la recomendación"]
     D --> R
     R --> E["Modelo de lenguaje ajustado<br/>redacta la explicación"]
@@ -136,9 +136,9 @@ flowchart LR
 **Por qué una IA no calcula la dosis.** Un LLM falla en la aritmética de varios pasos, puede dar resultados distintos con los mismos datos, no permite demostrar cómo llegó a una cifra y consume muchos más tokens. Además, un modelo supervisado necesitaría ejemplos de la dosis correcta, que no existen. El motor determinista es reproducible, auditable y gratis por cada cálculo.
 
 **Capa 1: predicción de la humedad del suelo (modelo principal, B).**
-- Deep learning de series temporales, a partir de las lecturas de los sensores y de la meteorología. Alimenta la perspectiva futura del informe semanal.
+- **Machine learning clásico** (decisión del 17 de octubre de 2026; el deep learning se aplica en el modelo de lenguaje). Algoritmo concreto por decidir; candidatos: *gradient boosting* o regresión regularizada. Se entrena con las lecturas de los sensores y la meteorología, y alimenta la perspectiva futura del informe semanal.
 - Datos: unos 25.000 registros de Agrodevices, de varios sensores y parcelas (por verificar: cuántos sensores, frecuencia y fechas).
-- Evaluación: validación temporal (se entrena con el pasado y se evalúa con el futuro, sin que el modelo vea lo que debe predecir) y comparación con baselines: persistencia, regresión sencilla y balance de agua determinista. El deep learning no tiene por qué ganar; la comparación rigurosa es el resultado.
+- Evaluación: validación temporal (se entrena con el pasado y se evalúa con el futuro, sin que el modelo vea lo que debe predecir) y comparación con baselines: persistencia, regresión sencilla y balance de agua determinista. Un modelo más complejo no tiene por qué ganar a las baselines; la comparación rigurosa es el resultado.
 - El entrenamiento se hace **aparte**, en el ordenador de Laia, con versiones identificadas.
 - **Pendiente:** arquitectura concreta, ventana de entrada, horizonte de predicción y **dónde se guardan las predicciones**: el esquema actual no tiene una tabla para ellas y probablemente haga falta una.
 
@@ -153,6 +153,8 @@ flowchart LR
 - **Dónde se ejecuta:** en el ordenador de Laia, en un proceso aparte, sobre recomendaciones ya calculadas. La web, que puede estar en la nube, muestra la plantilla hasta que el texto esté disponible. Para la defensa puede ejecutarse todo en local.
 
 **Corrección del sesgo de la previsión (A), opcional.** Si da tiempo. A un día vista el error probablemente no cambia la dosis; en los días 3 a 7 del informe semanal sí puede importar. Habría que medir cuánto cambia la dosis recomendada al corregirla.
+
+**Conocimiento agronómico con RAG: mejora futura.** Consistiría en buscar fragmentos de documentación técnica (por ejemplo, la guía FAO-56) y dárselos al modelo de lenguaje para apoyar sus explicaciones. Queda fuera del alcance actual porque exige reunir los documentos y comprobar sus licencias, añadir un índice de búsqueda y evaluar que el modelo no mezcle el texto recuperado con las cifras del motor. La alternativa barata es asociar a cada regla del motor un texto explicativo fijo, sacado de una fuente fiable.
 
 ## 6. Pantallas y navegación (acordado)
 
@@ -236,7 +238,7 @@ Del servicio meteorológico anterior (`agrodevices-meteo-app`) se integran y ada
 - Una corrección manual del Kc o de la etapa se queda fijada hasta que alguien la borre. En el MVP se mitiga indicando en el informe cuándo se usa un valor manual.
 - Con el login en Streamlit Community Cloud hubo fallos reportados con Auth0 desde abril de 2026 (según el foro de Streamlit); hay que fijar las versiones de `streamlit[auth]` y `Authlib`.
 - Sin datos de Agrodevices (qué miden los sensores, unidades, calibración, riegos, parámetros agronómicos), el motor es provisional.
-- **Plazo de dos meses** para el modelo de deep learning, el fine-tuning del modelo de lenguaje, el motor y una web mínima. Va muy justo: hay que decidir pronto qué se recorta de la aplicación.
-- Los 25.000 registros pueden ser pocos para deep learning según cómo estén repartidos (por sensores, parcelas y estaciones del año); se verifica al cargarlos.
+- **Plazo de dos meses** para el modelo de machine learning, el fine-tuning del modelo de lenguaje, el motor y una web mínima. Va muy justo: hay que decidir pronto qué se recorta de la aplicación.
+- Los 25.000 registros pueden ser pocos según cómo estén repartidos (por sensores, parcelas y estaciones del año), incluso para un modelo clásico; se verifica al cargarlos.
 - La creación de los datos de entrenamiento del modelo de lenguaje es laboriosa y depende de haber fijado antes la salida del motor.
 - Un modelo de lenguaje pequeño puede alterar cifras; por eso se rellenan los huecos desde el motor y se comprueba el texto, con la plantilla como respaldo.
