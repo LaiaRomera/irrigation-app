@@ -2,16 +2,16 @@
 
 Plataforma web de **recomendaciones de riego explicables** para parcelas agrícolas. Combina datos de sensores de suelo (Agrodevices) con la previsión y el histórico meteorológico de Open-Meteo, y explica **cuánto regar, cuándo y por qué** a partir de una recomendación calculada. No acciona válvulas.
 
-Alcance en tres capas: un **modelo de machine learning predice** la humedad del suelo, un **motor determinista decide** la recomendación y un **modelo de lenguaje ajustado (fine-tuning) explica** el resultado, de forma integrada y automática. Incluye informes diario y semanal descargables en PDF (con gráficas y explicaciones en lenguaje natural), alertas agronómicas y acceso de cada usuario a sus parcelas. Opcional: corrección del sesgo meteorológico. Fuera del MVP: detector de anomalías en sensores. Todo gratuito y en el ordenador de la autora.
+Alcance en tres capas: un **modelo de machine learning predice** la humedad del suelo, un **motor determinista decide** la recomendación y un **modelo de lenguaje (por API, con prompt, ejemplos y RAG) explica** el resultado, de forma integrada y automática. Incluye informes diario y semanal descargables en PDF (con gráficas y explicaciones en lenguaje natural), alertas agronómicas y acceso de cada usuario a sus parcelas. Opcional: corrección del sesgo meteorológico. Fuera del MVP: detector de anomalías en sensores. Todo gratuito y en el ordenador de la autora.
 
-## Estado (14 de octubre de 2026)
+## Estado (22 de octubre de 2026)
 
 El proyecto está en **fase de diseño**: todavía no hay web, tareas ni motor.
 
 | Pieza | Estado |
 |---|---|
 | Arquitectura y decisiones | Documentadas |
-| Esquema de la base de datos (10 tablas) | Hecho y validado en MySQL local y en Aiven |
+| Esquema de la base de datos (12 tablas, PostgreSQL con pgvector) | Hecho y validado en Docker local y en Aiven PostgreSQL |
 | Login con Auth0 y Streamlit | Probado en local; pendiente en Streamlit Community Cloud |
 | Conector de Open-Meteo | Por hacer (se adapta el del servicio antiguo) |
 | Modelo de humedad del suelo, motor, modelo de lenguaje, informes, alertas, tareas diarias, web | Por hacer |
@@ -31,7 +31,7 @@ El proyecto está en **fase de diseño**: todavía no hay web, tareas ni motor.
 
 ## Puesta en marcha rápida
 
-Requiere Python 3.14 y una base MySQL 8.4 (Aiven o Docker). Detalle completo en [docs/puesta_en_marcha.md](docs/puesta_en_marcha.md).
+Requiere Python 3.14 y una base PostgreSQL 17 con pgvector (Aiven o Docker). Detalle completo en [docs/puesta_en_marcha.md](docs/puesta_en_marcha.md).
 
 ```bash
 python -m venv .venv

@@ -12,7 +12,7 @@ Los identificadores del código van en inglés; esta tabla da su equivalente en 
 | recommendation | recomendación | |
 | alert | alerta | |
 | report | informe | Diario o semanal |
-| user | usuario | |
+| user | usuario | La tabla se llama `app_user`, porque `user` es palabra reservada en PostgreSQL |
 | tMax / tMin / tMedia | temperatura máxima / mínima / media | °C. Nombres de la tabla de sensores de Agrodevices |
 | rhMax / rhMin / rhMedia | humedad relativa máxima / mínima / media | % |
 | vientoMax / vientoMin / vientoMedia | viento máximo / mínimo / medio a 10 m | km/h |

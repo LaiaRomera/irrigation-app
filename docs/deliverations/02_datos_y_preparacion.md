@@ -113,7 +113,7 @@ Organizo el trabajo en tres capas, de lo más crudo a lo más listo para usar:
 flowchart LR
     A["Sensores de Agrodevices<br/>(exportación de la empresa)"] --> B
     O["Open-Meteo<br/>(previsión, histórico, ejecuciones anteriores)"] --> B
-    B["BRONZE<br/>dato tal como llega"] --> S["SILVER<br/>dato limpio y ordenado<br/>(base de datos MySQL)"]
+    B["BRONZE<br/>dato tal como llega"] --> S["SILVER<br/>dato limpio y ordenado<br/>(base de datos PostgreSQL)"]
     S --> G["GOLD<br/>dataset para el modelo<br/>(una fila por sensor y día)"]
     G --> M["Modelo de humedad del suelo<br/>(siguiente fase)"]
 ```
@@ -128,7 +128,7 @@ Aquí **no se modifica nada**. Guardo cada dato exactamente como lo entrega su f
 
 ### 4.2. Silver: el dato limpio
 
-Es el paso donde corrijo y ordeno. El resultado se guarda en las tablas de mi base de datos MySQL (`sensor_reading`, `historical_weather` y `forecast_data`), que ya diseñé y comprobé. Las transformaciones son:
+Es el paso donde corrijo y ordeno. El resultado se guarda en las tablas de mi base de datos PostgreSQL (`sensor_reading`, `historical_weather` y `forecast_data`), que ya diseñé y comprobé. Las transformaciones son:
 
 | Qué | Cómo lo resuelvo |
 |---|---|

@@ -1,6 +1,6 @@
 # Arquitectura
 
-Estado a 14 de octubre de 2026: **fase de diseño**. Lo único construido es el esquema de la base de datos (validado en MySQL local y en Aiven) y una prueba de login en local. El resto de módulos que se describen aquí están **planificados y todavía sin implementar**.
+Estado a 22 de octubre de 2026: **fase de diseño**. Lo único construido es el esquema de la base de datos (PostgreSQL con pgvector, validado en Docker local y en Aiven) y una prueba de login en local. El resto de módulos que se describen aquí están **planificados y todavía sin implementar**.
 
 Cada afirmación de este documento está marcada, cuando importa, como **acordada**, **provisional** (propuesta pendiente de comprobar) o **pendiente** (dato que aún no se conoce). El registro de por qué se decidió cada cosa está en [decisiones.md](decisiones.md).
 
@@ -36,7 +36,7 @@ flowchart LR
         T["Ingesta diaria a las 05:00<br/>normalización, calidad y alertas"]
     end
 
-    T -->|escribe| DB[("MySQL")]
+    T -->|escribe| DB[("PostgreSQL<br/>+ pgvector")]
 
     subgraph PW["Proceso web (Streamlit)"]
         W["Interfaz"]
@@ -109,7 +109,7 @@ Los nombres de carpeta son **orientativos**: se crean en cada fase, no antes. So
 | `models/` | Modelo de machine learning de humedad del suelo: entrenamiento (aparte) e inferencia | Por crear |
 | `explanations/` | Modelo de lenguaje ajustado que redacta las explicaciones, y la comprobación de fidelidad de las cifras | Por crear |
 | Motor de riego | Preparación de entradas, cálculo y construcción del resultado, en un mismo módulo | Por crear; **el nombre de la carpeta en inglés (p. ej. `irrigation_engine/`) está pendiente** |
-| `reports/` | Estadísticas, plantilla diaria y semanal, gráficas y generación del PDF descargable (librería y maquetación por decidir) | Por crear |
+| `reports/` | Estadísticas, plantilla diaria y semanal, gráficas y generación del PDF descargable (librería: ReportLab; maquetación por diseñar) | Por crear |
 | `access/` | Filtra las parcelas permitidas por usuario y sirve datos a la interfaz | Por crear |
 | `jobs/` | Coordina la secuencia diaria, evita ejecuciones concurrentes y duplicados, registra resultados parciales | Por crear |
 | `web/` | La interfaz Streamlit | Por crear |
@@ -203,14 +203,14 @@ Todo debe ser gratuito durante el TFM; la empresa lo adaptará después a sus ne
 
 | Pieza | Propuesta | Estado |
 |---|---|---|
-| Base de datos | Aiven MySQL (plan gratuito: 1 GB, un solo nodo, se puede apagar por inactividad) | Esquema aplicado y validado en `irrigation_app` |
+| Base de datos | Aiven PostgreSQL con pgvector (plan gratuito: 1 GB, un solo nodo, se puede apagar por inactividad) | Esquema aplicado y validado en `irrigation_app` (PostgreSQL 18.6) |
 | Tareas diarias | GitHub Actions con cron (se programará a una hora poco habitual, porque puede retrasarse; en repos públicos se pausa tras 60 días sin actividad) | Provisional, sin implementar |
 | Web | Streamlit Community Cloud (se duerme tras 12 h sin tráfico y cualquiera puede despertarla) | Provisional; el login está sin probar en la nube |
-| Plan B de la web | Render (se duerme a los ~15 min; no ofrece MySQL ni Cron Jobs gratis) | Solo si Community Cloud falla |
+| Plan B de la web | Render (se duerme a los ~15 min; su base de datos gratuita caduca y no ofrece Cron Jobs gratis) | Solo si Community Cloud falla |
 
 **Entornos:**
-- **Desarrollo en la nube:** base `irrigation_app` en el servicio de Aiven. Comparte servidor con la base del servicio antiguo (`defaultdb`), que no se toca.
-- **Desarrollo local:** MySQL 8.4 en Docker (contenedor `irrigation-mysql`, puerto 3308). Sirve para pruebas que escriben datos sin gastar el almacenamiento de Aiven.
+- **Desarrollo en la nube:** base `irrigation_app` en un servicio PostgreSQL gratuito de Aiven. El servicio MySQL de Aiven (`defaultdb` del servicio antiguo, y la base `irrigation_app` del esquema abandonado, pendiente de borrar) no se usa.
+- **Desarrollo local:** PostgreSQL 17 con pgvector en Docker (contenedor `irrigation-pg`, imagen `pgvector/pgvector:pg17`, puerto 5433). Sirve para pruebas que escriben datos sin gastar el almacenamiento de Aiven.
 - **Entrenamiento y modelo de lenguaje:** en el ordenador de Laia (Intel Core i7-11370H, 16 GB de RAM, GPU NVIDIA GeForce de 8 GB, además de una Intel Iris), todo gratuito. Entorno de aprendizaje automático aparte; la compatibilidad de PyTorch con GPU y la versión de Python (3.14 frente a 3.12) están por verificar.
 - **Producción:** no existe. La empresa decidirá dónde y cómo.
 

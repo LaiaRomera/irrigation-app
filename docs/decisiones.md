@@ -13,12 +13,34 @@ El detalle técnico vive en otros documentos:
 
 ## 1. Decisiones acordadas
 
+### Decisiones del 22 de octubre de 2026 (sustituyen a lo anterior donde lo contradicen)
+Origen: el documento de arquitectura del motor de cálculo (Word, v0.2) y un resumen de arquitectura general, revisados con Laia. Las demás secciones de este diario, la arquitectura y el README **aún no están actualizados** con estos cambios; se propagarán cuando Laia entregue el diseño del modelo de machine learning.
+
+**Motor de cálculo**
+- Se adopta el diseño del Word: paquete `irrigation_engine/` en Python puro, sin red ni base de datos, con entradas y salidas estructuradas (Pydantic), fórmulas de FAO-56 (ETc = ET0 × Kc, TAW, RAW, dosis neta y bruta, volumen teórico solo con superficie conocida), sin cálculo de duración sin caudal y con valores desconocidos a `null`.
+- **El motor no predice la humedad del suelo: la recibe del modelo de machine learning.** Pendiente de reconciliar con las secciones 4.3 y 6 del Word, que proyectan el balance hídrico a 7 días, cuando Laia pase el diseño del ML.
+- **Un solo cálculo con el plan de 7 días dentro**; el informe diario usa el primer día.
+- **Versionado inmutable:** cada recálculo crea una nueva recomendación vinculada a la anterior; nunca se sobrescribe (sustituye a "una por parcela y día, que se actualiza").
+- **Dos estados distintos:** la **decisión** (regar, aplazar, no regar, datos insuficientes) y el **estado de validación** (`validated`, `provisional`, `insufficient_data`).
+- **Los clientes viven fuera del motor.** Flujo: el conector descarga, se normaliza y se guarda en la base de datos, y de ahí pasa al motor.
+- **Riegos ejecutados: fuera**, porque no hay esa información.
+
+**IA generativa (sustituye a lo del fine-tuning)**
+- **Fine-tuning descartado.** El texto lo genera un **LLM externo mediante API**, con instrucciones fijas, ejemplos de informes (few-shot) y plantilla. Ya no hace falta crear datos de entrenamiento ni usar la GPU. Pendiente: proveedor, coste y capa gratuita (choca con "todo gratuito"), y que el informe básico de plantilla sirva de respaldo si la API falla.
+- **RAG entra en el MVP**, con **pocos documentos al principio**. Deja de ser mejora futura. Pendiente: qué documentos y su licencia, y el modelo de embeddings (preferible local y gratuito).
+- Validación antes de generar el PDF: las cifras y unidades coinciden con el motor, están las secciones obligatorias y las fuentes citadas existen de verdad.
+
+**Tecnología**
+- **Migración a PostgreSQL con pgvector** (decisión de Laia, 22 de octubre de 2026, que sustituye a "MySQL se mantiene"): la base de datos debe poder servir a futuros proyectos y tener búsqueda vectorial lista, y es mejor cambiarla ahora que está vacía. **Hecho el mismo día:** esquema y script reescritos, tablas del RAG añadidas y todo validado en Docker local. Aloja Aiven PostgreSQL (plan gratuito, con pgvector): servicio creado, esquema aplicado y las 36 pruebas repetidas allí sin fallos.
+- **Se sigue con Streamlit, sin FastAPI en el MVP:** Streamlit llama a funciones del paquete. Pydantic sí.
+- **PDF: ReportLab** (decidido el 22 de octubre de 2026 tras probar en el ordenador de Laia). WeasyPrint no arrancó en Windows porque necesita librerías gráficas del sistema (Pango/GTK) que no están instaladas; ReportLab, que es solo Python, generó un informe de prueba con tabla, gráfica de Matplotlib, tildes y símbolos como ET₀ y m³. Las fuentes estándar de PDF no tienen todos los símbolos, así que se usa una fuente Unicode (DejaVu, que trae Matplotlib).
+
 ### Alcance del TFM y componentes de IA
 - **Requisito:** el TFM debe aplicar lo aprendido en el máster (machine learning, deep learning e IA generativa). El documento original de definición del TFM **ya no manda en el alcance**; el resto de decisiones (arquitectura, base de datos, usuarios) se mantiene.
 - **Tres capas:** el modelo de ML/DL **predice**, las reglas del motor determinista **deciden** y un modelo de lenguaje **explica**. Ninguna IA calcula la dosis de riego: no sería reproducible ni auditable, consumiría más tokens, y no hay ejemplos de la dosis correcta con los que entrenar un modelo supervisado.
 - **Modelo principal (B): previsión de la humedad del suelo con machine learning clásico** (decisión de Laia, 17 de octubre de 2026; el deep learning se aplica en el modelo de lenguaje; algoritmo concreto por decidir, candidatos *gradient boosting* o regresión regularizada), a partir de las lecturas de los sensores y de la meteorología. Permite recomendar riegos de días futuros (informe semanal). Se evalúa contra baselines: persistencia, regresión sencilla y balance de agua determinista. Datos: unos 25.000 registros de Agrodevices, de varios sensores y parcelas, que Laia puede usar (pendiente de verificar: número de sensores y parcelas, frecuencia de medida y rango de fechas).
 - **Corrección del sesgo de la previsión meteorológica (A): opcional**, solo si da tiempo. Su valor depende del horizonte: a un día vista el error probablemente no cambie la dosis, pero sí puede importar en los días 3 a 7 del informe semanal. Habría que medir cuánto cambia la dosis recomendada al corregir.
-- **IA generativa: fine-tuning de un modelo de lenguaje abierto y pequeño** en la GPU local (QLoRA), **integrado en el código y automático**: tras el cálculo del motor, una función genera la explicación sin intervención de nadie. Es el único uso aceptado de un LLM en el proyecto.
+- **[SUSTITUIDO el 22 de octubre de 2026: ver la sección anterior] IA generativa: fine-tuning de un modelo de lenguaje abierto y pequeño** en la GPU local (QLoRA), **integrado en el código y automático**: tras el cálculo del motor, una función genera la explicación sin intervención de nadie. Es el único uso aceptado de un LLM en el proyecto.
 - **Datos de entrenamiento del LLM** (pares resultado del motor → explicación en español): **generación programática más generación con ayuda de una IA, revisando una muestra**. Debe declararse en la memoria. Idealmente, con apoyo agronómico en la revisión.
 - **Fidelidad de las cifras:** el modelo genera el texto con huecos que el código rellena con las cifras del motor, y una comprobación automática compara el texto con las cifras. Si falla, se usa la plantilla, que se mantiene como respaldo.
 - **Evaluación del LLM:** modelo ajustado frente a la plantilla y frente al mismo modelo sin ajustar, con casos reservados solo para evaluar; fidelidad de cifras, unidades, motivos y comunicación de la información faltante.
@@ -89,26 +111,26 @@ El detalle técnico vive en otros documentos:
 - Todo gratuito durante el TFM. La empresa lo adaptará después a sus necesidades.
 
 ### Modelo de datos
-Lista de entidades y diccionario en [base_de_datos.md](base_de_datos.md). Son 10 tablas. Decisiones de fondo:
+Lista de entidades y diccionario en [base_de_datos.md](base_de_datos.md). Son 12 tablas (PostgreSQL con pgvector; antes eran 10 en MySQL). Decisiones de fondo:
 - Cada parcela pertenece a un único usuario (`plot.user_id`); no hay tabla intermedia de asignación. Una parcela no se puede compartir entre usuarios hasta la mejora de organizaciones, que de todos modos cambiaría el esquema (`organization_id` en parcela y usuario).
 - Parámetros de parcela dentro de `plot`, sin tabla de periodos de validez. La reproducibilidad queda cubierta por la copia de entradas en `recommendation`.
 - Lo que se puede calcular no se guarda: la etapa y el Kc se calculan a partir del cultivo y de `cycle_start_date`. Excepción: `growth_stage_manual` y `kc_manual` opcionales, que prevalecen si se rellenan. La profundidad radicular se deduce y no se guarda por ahora.
 - El marcador de alertas vistas es una columna de `plot` y no una tabla (`alert_view`).
 - `alert`: una fila por alerta, modificada en su sitio; sin tabla de historial de eventos, sin gravedad y sin clave foránea al sensor en el MVP.
 - `sensor` y `sensor_reading` separadas. Se descartó una única tabla de lecturas con sensor, parcela y profundidad repetidos en cada fila.
-- **`sensor_reading` cambiada el 14 de octubre de 2026**: se añadió `is_interpolated` y se renombró `raw_value` a `value`, porque ya no es el valor original. Aplicado en el SQL y en Aiven; pendiente en el MySQL local de Docker (ver [base_de_datos.md](base_de_datos.md), sección 7).
+- **`sensor_reading` cambiada el 14 de octubre de 2026**: se añadió `is_interpolated` y se renombró `raw_value` a `value`, porque ya no es el valor original. Incluido ya en el esquema de PostgreSQL (el esquema de MySQL, donde se aplicó primero, se abandonó).
 - Una sola tabla de previsiones (`forecast_data`) en lugar de captura más valores, que nunca se sobrescribe. El histórico (`historical_weather`) se sobrescribe cuando llegan revisiones, porque `recommendation` guarda una copia de lo que usó.
-- `recommendation` guarda siempre esa copia, también si el resultado es "datos insuficientes". Una por parcela y día. Sin porcentaje de confianza.
+- `recommendation` guarda siempre esa copia, también si el resultado es "datos insuficientes". *(Actualizado el 22 de octubre de 2026: ya no es una por parcela y día, sino inmutable y versionada, con dos estados y plan de siete días; ver la sección de esa fecha.)* Sin porcentaje de confianza.
 - `report` se conserva con el texto ya redactado y un historial de informes generados: queda preparada para los textos del LLM (columna `generator`) y permite compararlos con la plantilla.
 - Sin tabla de riegos (`irrigation_event`) hasta disponer de datos de riego.
 - `weather_code` guarda el código WMO y no el texto; la traducción se hace al mostrarlo.
-- Las fechas y horas (`DATETIME`) se guardan en UTC.
+- Las fechas y horas (`TIMESTAMPTZ`) se guardan en UTC.
 - `sensor_reading` es única por (`sensor_id`, `measured_at`) para no duplicar lecturas al reimportar.
 
 ### Descartado
 - **Agente interactivo o chat**: el informe es automático, nadie conversa con una IA ni le pasa datos ni instrucciones.
 - **Que un LLM calcule la recomendación**: la calcula el motor determinista.
-- **Usar un modelo de lenguaje solo con un prompt** como sustituto del entrenamiento.
+- **Usar un modelo de lenguaje solo con un prompt** como sustituto del entrenamiento. *(Revocado el 22 de octubre de 2026: se pasa a un LLM por API con prompt, ejemplos y RAG.)*
 - **Modelo de ML para detectar anomalías**: sin fallos etiquetados no se puede entrenar ni evaluar bien.
 - **Login con Google**: los clientes son empresas agrónomas sin por qué tener cuenta de Google.
 - **Vincular parcelas por coordenadas** como identificador: riesgo de acceso a parcelas ajenas e imprecisión.
@@ -118,19 +140,19 @@ Lista de entidades y diccionario en [base_de_datos.md](base_de_datos.md). Son 10
 | Pieza | Propuesta | Estado |
 |---|---|---|
 | Tareas diarias | GitHub Actions (cron) | Sin implementar. A verificar: retrasos del cron; pausa tras 60 días sin actividad en repos públicos. Para la defensa se puede ejecutar todo en local |
-| Base de datos | Aiven MySQL (plan gratuito) | **Esquema aplicado y validado** en `irrigation_app`. A verificar: umbral de inactividad antes de apagarse; si 1 GB basta para el histórico y las lecturas |
+| Base de datos | Aiven PostgreSQL con pgvector (plan gratuito) | **Esquema aplicado y validado** en Docker local y en Aiven (PostgreSQL 18.6). A verificar: umbral de inactividad antes de apagarse; si 1 GB basta para el histórico y las lecturas |
 | Web | Streamlit Community Cloud | Sin implementar. A verificar: que funcione el login; el cifrado de los secretos no se detalla en la documentación |
 | Login | Auth0 con `st.login` (OIDC, usuario y contraseña) | **Probado en local el 8 de octubre de 2026 con éxito.** Plan gratuito de Auth0: hasta 25.000 usuarios activos al mes, sin tarjeta. Pendiente: Streamlit Community Cloud (ver nota) |
 | Login, plan B | `streamlit-authenticator` | Si permite usuarios desde BBDD en lugar de YAML |
 | Entorno de ML | PyTorch con GPU NVIDIA, en un entorno aparte, **solo para el modelo de lenguaje**; el modelo de predicción es clásico y no necesita GPU | No he podido confirmar que PyTorch publique versiones con GPU para Python 3.14 en Windows; Laia también tiene Python 3.12 instalado. Verificar en pytorch.org antes de instalar |
-| Modelo de lenguaje | Modelo abierto de 3 a 8 mil millones de parámetros con QLoRA (Unsloth o PEFT) | Según guías secundarias, en 8 GB caben 3–4B con holgura y 7–8B muy justos. Confirmar con la documentación oficial y con una prueba. Modelo concreto, licencia y calidad en español, por decidir |
+| Modelo de lenguaje | *(Sustituido el 22 de octubre de 2026: LLM por API con prompt, ejemplos y RAG; proveedor y coste por decidir.)* Antes: modelo abierto de 3 a 8 mil millones de parámetros con QLoRA (Unsloth o PEFT) | Según guías secundarias, en 8 GB caben 3–4B con holgura y 7–8B muy justos. Confirmar con la documentación oficial y con una prueba. Modelo concreto, licencia y calidad en español, por decidir |
 
 Notas:
 - Login en Community Cloud (según hilos del foro de Streamlit, relatos de usuarios y no documentación oficial): para una app desplegada el `redirect_uri` tiene la forma `https://<app>.streamlit.app/~/+/oauth2callback` y debe coincidir exactamente con *Allowed Callback URLs* de Auth0. Desde finales de abril de 2026 hubo fallos con Auth0 (`mismatching_state: CSRF Warning`) y el remedio fue fijar `streamlit[auth]==1.56.0` y `Authlib==1.6.11`; su estado actual se desconoce. Plan B: alojar la web en otro sitio o usar `streamlit-authenticator`.
 - La prueba de login vive en `data/login_test/` (ignorada por git) y se borra al terminar. Streamlit lee `.streamlit/secrets.toml` de la carpeta desde la que se lanza, y los valores del `.toml` llevan comillas. Procedimiento en [puesta_en_marcha.md](puesta_en_marcha.md).
 - Apps de Community Cloud: se duermen tras 12 h sin tráfico y cualquier visitante puede despertarlas.
-- Render queda como plan B solo para la web: se duerme a los ~15 min y no ofrece MySQL ni Cron Jobs gratis.
-- Docker: existe un MySQL local de pruebas (contenedor `irrigation-mysql`, puerto 3308), actualmente parado. Se conserva, junto con su volumen y `.env.docker`, para pruebas futuras que escriban datos.
+- Render queda como plan B solo para la web: se duerme a los ~15 min y su base de datos gratuita caduca; no ofrece Cron Jobs gratis.
+- Docker: el PostgreSQL local de pruebas es el contenedor `irrigation-pg` (imagen `pgvector/pgvector:pg17`, puerto 5433, configuración en `.env.docker-pg`, ignorado por git). El contenedor `irrigation-mysql`, su volumen y `.env.docker` (esquema MySQL abandonado) se borraron el 22 de octubre de 2026 a petición de Laia. La base MySQL `irrigation_app` de Aiven la borra Laia desde la consola (el servicio MySQL tiene también `defaultdb` del proyecto antiguo, que no se toca).
 
 ## 3. Mejoras futuras (fuera del MVP)
 
@@ -148,7 +170,7 @@ Notas:
 12. **Alertas de calidad de datos solo para el personal de la empresa**, cuando existan roles.
 13. Modelo de detección de anomalías en lecturas reales, evaluado contra las reglas y con fallos sintéticos, solo si hay datos suficientes y la comparación lo justifica.
 14. Corrección del sesgo meteorológico, si no entra antes como opcional (A).
-15. **Conocimiento agronómico con RAG** (búsqueda de fragmentos de documentación técnica, por ejemplo la guía FAO-56, para que el modelo de lenguaje los use al explicar). Decisión de Laia el 17 de octubre de 2026: queda como mejora futura. Motivos: hace falta reunir los documentos y comprobar su licencia, añade un índice de búsqueda, y un modelo pequeño ajustado puede mezclar el texto recuperado con las cifras del motor, además de ser más difícil de evaluar. Mientras tanto, alternativa barata: asociar a cada regla del motor un texto explicativo fijo de una fuente fiable.
+15. *(Adelantado al MVP el 22 de octubre de 2026, con pocos documentos al principio.)* **Conocimiento agronómico con RAG** (búsqueda de fragmentos de documentación técnica, por ejemplo la guía FAO-56, para que el modelo de lenguaje los use al explicar). Decisión de Laia el 17 de octubre de 2026: queda como mejora futura. Motivos: hace falta reunir los documentos y comprobar su licencia, añade un índice de búsqueda, y un modelo pequeño ajustado puede mezclar el texto recuperado con las cifras del motor, además de ser más difícil de evaluar. Mientras tanto, alternativa barata: asociar a cada regla del motor un texto explicativo fijo de una fuente fiable.
 
 ## 4. Pendientes
 
@@ -166,7 +188,7 @@ Notas:
 - Reglas agronómicas del motor y tratamiento de datos insuficientes, con apoyo agronómico.
 - Dónde viven los valores de referencia por cultivo: archivo de configuración o tabla.
 - Nombre en inglés de la carpeta del motor de riego.
-- Informe en PDF (ya es requisito del MVP): elegir la librería de generación de PDF (por evaluar, en Windows), diseñar la plantilla y decidir qué gráficas lleva (por ejemplo, humedad del suelo pasada y prevista por profundidad, lluvia y ET0 previstas, y la dosis recomendada). Es una capa de presentación que se hace cuando el informe ya funcione.
+- Informe en PDF (requisito del MVP; librería: ReportLab): diseñar la plantilla (con la estructura de diez secciones del Word) y decidir qué gráficas lleva (por ejemplo, humedad del suelo pasada y prevista por profundidad, lluvia y ET0 previstas, y la dosis recomendada). Es una capa de presentación que se hace cuando el informe ya funcione.
 - Elegir una parcela, cultivo y sector como caso inicial.
 - Cómo se calcula la perspectiva futura del informe semanal (probablemente con el modelo B).
 - Primera consulta de alertas: cuántas se muestran; y momento exacto de actualización del marcador.
@@ -188,7 +210,7 @@ Notas:
 
 **Hecho:**
 - Estructura del repositorio y documentación.
-- Esquema de la base de datos (10 tablas): relaciones, diccionario, ERD y SQL. Validado en MySQL 8.4.11 local (Docker) y en MySQL 8.4.8 (Aiven), con las 10 tablas, 9 claves foráneas, 5 `CHECK`, 7 unicidades y 17 pruebas de restricciones correctas. Las tablas del servicio antiguo (`defaultdb`) no se han tocado.
+- Esquema de la base de datos (12 tablas, PostgreSQL 17 con pgvector 0.8.7): relaciones, diccionario, ERD y SQL. Validado en Docker local y en Aiven (PostgreSQL 18.6), con las 12 tablas, 10 claves foráneas, 13 `CHECK`, 8 unicidades y 36 pruebas de restricciones correctas (incluidas inmutabilidad de `recommendation`, cadena de versiones y búsqueda vectorial). Sustituye al esquema de MySQL de 10 tablas, que estaba vacío. Las tablas del servicio antiguo (`defaultdb`) no se han tocado.
 - Script de aplicación del esquema, `scripts/apply_schema.py`, con salvaguardas.
 - Login con Auth0 y `st.login` probado en local.
 - Entorno de Python de la aplicación con las dependencias fijadas.
@@ -197,6 +219,6 @@ Notas:
 **Siguiente:**
 1. Cerrar el alcance: concretar el diseño de los modelos y recortar la aplicación.
 2. Cargar y analizar los 25.000 registros y definir la estructura de salida del motor.
-3. Aplicar el cambio de `sensor_reading` en el MySQL local de Docker cuando se encienda Docker Desktop, y probar el SQL completo en una base temporal.
+3. Borrar la base MySQL `irrigation_app` del servicio MySQL de Aiven (Laia, desde la consola).
 4. Conector de Open-Meteo y las dos parcelas de prueba.
 5. Plan de ocho semanas.

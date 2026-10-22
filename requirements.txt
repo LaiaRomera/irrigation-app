@@ -1,5 +1,5 @@
 # Dependencias con versión fijada. Se añaden una a una, cuando se necesitan.
-PyMySQL==1.2.3
+psycopg[binary]==3.3.6
 python-dotenv==1.2.4
 streamlit[auth]==1.56.0
 Authlib==1.6.11

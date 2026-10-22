@@ -7,9 +7,9 @@ Estado: solo están implementados el esquema de la base de datos y su script de 
 ## 1. Requisitos
 
 - **Python 3.14.** El proyecto se ha desarrollado con la 3.14.3; no se ha probado con otras versiones.
-- **Una base de datos MySQL 8.4**, de una de estas dos formas:
+- **Una base de datos PostgreSQL 17 con la extensión pgvector**, de una de estas dos formas:
   - **Aiven** (plan gratuito), que es la base de desarrollo en la nube. Necesita el certificado CA del servicio (`ca.pem`).
-  - **Docker**, para un MySQL local de pruebas.
+  - **Docker**, para un PostgreSQL local de pruebas (imagen `pgvector/pgvector:pg17`).
 - **Una cuenta gratuita de Auth0**, solo para probar el login.
 
 ## 2. Entorno de Python
@@ -43,41 +43,56 @@ La conexión se lee de un archivo `.env`, que **nunca se sube a git**. La planti
 
 **Cuidado con la base:** el servicio de Aiven puede alojar otras bases. Este proyecto solo debe usar `irrigation_app`. El script de la sección 5 se niega a ejecutarse si `DB_NAME` es otro nombre.
 
-Para otro destino (por ejemplo, el MySQL local) puedes crear otro archivo, como `.env.docker`; los archivos `.env.*` están ignorados por git, salvo `.env.example`.
+Para otro destino (por ejemplo, el PostgreSQL local) puedes crear otro archivo, como `.env.docker-pg`; los archivos `.env.*` están ignorados por git, salvo `.env.example`.
 
-## 4. MySQL local con Docker (opcional)
+### 3.1. Crear el servicio PostgreSQL en Aiven
 
-Sirve para pruebas que escriben datos sin gastar el almacenamiento gratuito de Aiven (1 GB).
+1. En la consola de Aiven: **Create service → PostgreSQL** y elige el plan **Free**. Solo se permite un servicio gratuito de cada tipo.
+2. Cuando esté en marcha, copia del panel del servicio el host, el puerto, el usuario y la contraseña a tu `.env`. Descarga el certificado CA como `ca.pem`.
+3. La base `irrigation_app` no hace falta crearla a mano: `scripts/apply_schema.py` la crea si no existe (conectando antes a la base de mantenimiento del servicio, `defaultdb`).
+4. La extensión pgvector está disponible en el plan gratuito; el propio SQL del esquema la activa (`CREATE EXTENSION vector`).
+
+5. En el `.env`, `DB_NAME` es `irrigation_app` aunque el panel muestre `defaultdb` (esa es la base de mantenimiento que trae Aiven).
+6. Un servicio recién creado tarda un rato en publicar su nombre de host: si da "failed to resolve host", espera a que el estado sea *Running*.
+
+El script verifica el SSL con `verify-ca` (que el certificado lo firme la CA de Aiven). Con `verify-full` la librería de Windows falla con "certificate contains IP address with invalid length 16". Además, libpq no abre el certificado si la ruta completa lleva caracteres no ASCII (como la "ó" de `Programación`), por lo que el script trabaja desde la raíz del proyecto con la ruta relativa.
+
+No pegues contraseñas en el chat ni en archivos que se suban a git.
+
+## 4. PostgreSQL local con Docker (opcional)
+
+Sirve para pruebas que escriben datos sin gastar el almacenamiento gratuito de Aiven (1 GB). Requiere Docker Desktop en marcha.
 
 ```bash
-docker run -d --name irrigation-mysql -e MYSQL_ROOT_PASSWORD="<contraseña>" -e MYSQL_DATABASE=irrigation_app -p 127.0.0.1:3308:3306 -v irrigation_mysql_data:/var/lib/mysql mysql:8.4 --character-set-server=utf8mb4
+docker run -d --name irrigation-pg -e POSTGRES_PASSWORD="<contraseña>" -e POSTGRES_DB=irrigation_app -p 127.0.0.1:5433:5432 -v irrigation_pg_data:/var/lib/postgresql/data pgvector/pgvector:pg17
 ```
 
-- El puerto `3308` evita chocar con el `3307` que usaba el proyecto antiguo, y se publica solo en `127.0.0.1`.
-- La contraseña es de pruebas; ponla en un archivo `.env.docker` con `DB_HOST=127.0.0.1`, `DB_PORT=3308`, `DB_USER=root`, `DB_NAME=irrigation_app` y `DB_SSL_CA` vacío.
-- Tarda unos segundos en aceptar consultas: arranca un MySQL temporal, se reinicia y entonces queda listo.
+- La imagen `pgvector/pgvector:pg17` es PostgreSQL 17 con pgvector ya instalado (unos 640 MB).
+- El puerto `5433` evita chocar con un PostgreSQL local en el `5432`, y se publica solo en `127.0.0.1`.
+- La contraseña es de pruebas; ponla en un archivo `.env.docker-pg` con `DB_HOST=127.0.0.1`, `DB_PORT=5433`, `DB_USER=postgres`, `DB_NAME=irrigation_app` y `DB_SSL_CA` vacío.
+- Tarda unos segundos en aceptar conexiones la primera vez.
 
 Parar y volver a arrancar (los datos se conservan en el volumen):
 
 ```bash
-docker stop irrigation-mysql
+docker stop irrigation-pg
 ```
 
 ```bash
-docker start irrigation-mysql
+docker start irrigation-pg
 ```
 
 Para borrarlo todo, incluidos los datos (irreversible):
 
 ```bash
-docker rm -f irrigation-mysql
+docker rm -f irrigation-pg
 ```
 
 ```bash
-docker volume rm irrigation_mysql_data
+docker volume rm irrigation_pg_data
 ```
 
-Nota: conectar con Python a este MySQL, que va sin SSL, probablemente requiera instalar el paquete `cryptography` por el método de autenticación de MySQL 8. No está probado todavía; con Aiven no hace falta.
+El contenedor `agrodevices-mysql-test` es de MySQL y pertenece al proyecto antiguo: no es de esta aplicación y no se toca.
 
 ## 5. Crear el esquema
 
@@ -88,17 +103,17 @@ Nota: conectar con Python a este MySQL, que va sin SSL, probablemente requiera i
 Con otro archivo de configuración:
 
 ```bash
-.venv/Scripts/python scripts/apply_schema.py .env.docker
+.venv/Scripts/python scripts/apply_schema.py .env.docker-pg
 ```
 
 Qué hace y qué garantías da:
 1. Se niega a ejecutarse si `DB_NAME` no es `irrigation_app`.
-2. Crea la base `irrigation_app` si no existe, en `utf8mb4`.
+2. Crea la base `irrigation_app` si no existe, en UTF-8.
 3. **Si la base ya tiene tablas, no hace nada**, para no pisar datos.
-4. Si está vacía, aplica `sql/create_schema.sql` y muestra el recuento de tablas y claves foráneas.
+4. Si está vacía, aplica `sql/create_schema.sql` (incluida la extensión pgvector) y muestra el recuento de tablas, claves foráneas, `CHECK` y unicidades, y la versión de pgvector.
 5. Nunca imprime la contraseña.
 
-Resultado esperado: `Esquema aplicado: 10 tablas y 9 claves foráneas.`
+Resultado esperado: `Esquema aplicado: 12 tablas, 10 claves foráneas, 13 CHECK y 8 UNIQUE.` y `Extensión vector: 0.8.7` (la versión puede variar).
 
 ## 6. Probar el login con Auth0
 
@@ -185,5 +200,5 @@ Al terminar, se borra la carpeta `data/login_test/`.
 | Streamlit arranca en el puerto 8502 | Hay otra instancia en marcha | Pararla con `Ctrl+C`; Auth0 solo acepta el 8501 |
 | `DB_NAME vale '...' y debe ser 'irrigation_app'` | El `.env` apunta a otra base | Corregir la línea `DB_NAME` |
 | `La base ya tiene N tablas` | El esquema ya está aplicado | No hace falta hacer nada |
-| `No se pudo conectar` | Servidor apagado (Aiven lo apaga por inactividad), datos incorrectos o falta el `ca.pem` | Encender el servicio desde su panel y revisar `.env` |
+| `No se pudo conectar` | Servidor apagado (Aiven lo apaga por inactividad; en local, Docker Desktop parado o contenedor detenido), datos incorrectos o falta el `ca.pem` | Encender el servicio desde su panel (o `docker start irrigation-pg`) y revisar `.env` |
 | `command not found` al escribir un nombre de archivo | Un nombre de archivo no es un comando | Abrirlo desde el editor (`Ctrl+P`) o con `code <ruta>` |
