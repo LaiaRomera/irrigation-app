@@ -173,6 +173,12 @@ Tablas de partida: `player_data` (dispositivos: modelo, coordenadas, activo) y `
 - **Las lecturas interpoladas (`SMMi`) se tratan como dato real.** Aparecen en el 86,7 % de los días (unas 16 al día), así que excluirlas o penalizarlas dejaría el conjunto casi vacío. Los recuentos se conservan por si más adelante se quiere analizar su efecto.
 - Resultado: 9.522.149 lecturas pasan a **100.168 valores diarios** en 128 unidades. El 98,7 % de los valores tiene las 96 lecturas del día y solo el 1,2 % tiene menos de 48; el 1,5 % no tiene ninguna lectura `SMM` real. Días con datos por unidad: mediana de 152; 56 unidades con 180 o más, 21 con 365 o más y 9 con menos de 30.
 
+**Escala común entre sondas** (`add_relative_moisture` en `src/irrigation_app/scale.py`; se aplica en `prepare_daily_readings.py`, que añade las columnas a `daily.parquet`; 5 pruebas)
+- Índice de humedad relativa de 0 a 100 por unidad: `(smm_max − frecuencia) / (smm_max − smm_min) × 100`, con el rango de cada sonda (`smm_min`, `smm_max`). Es la misma fórmula lineal que usa Agrodevices. **0 es el extremo seco de la escala de esa sonda y 100 el húmedo** (frecuencia alta = suelo seco).
+- Columnas: `moisture_index_mean`, `moisture_index_min` (sale de la frecuencia máxima del día) y `moisture_index_max` (de la mínima).
+- **No es humedad volumétrica** ni hay calibración de suelo: es un índice relativo al rango de la sonda, y la **linealidad es una suposición declarada** (con el análisis de sensibilidad previsto). No se recortan los valores fuera de 0 a 100; una unidad sin rango válido queda con nulos.
+- Resultado: sin nulos y todos los valores diarios medios dentro de 0 a 100 (media 69, mediana 72,5). Las referencias de campo y el punto de marchitez salen de los datos de cada sonda, no de este índice.
+
 ### Informe actual de Agrodevices (prompt, especificación y plantilla; 3 de noviembre de 2026)
 Documentos recibidos: `00_Prompt_HTML.txt`, `00_AGRODEVICES_MACHINE_SPEC.docx` (revisión 37), `02_Documentacion_estructura.docx`, `03_Plantilla_informe.pptx` y `Agrodevices-.zip` (plantilla `MASTER_HTML` con `index.html`, `agrodevices.css` y 34 recursos, más `01_Documentacion_variables_informe.docx`). **Son documentos internos de la empresa: no se suben al repositorio; aquí solo se resumen.** Se usan para saber cómo quieren el informe; la salida final no se rediseña, solo se mejora su calidad si hace falta.
 
