@@ -3,7 +3,8 @@
 Uso (desde la raíz del proyecto, después de prepare_agrodevices_readings.py):
     .venv/Scripts/python scripts/prepare_daily_readings.py
 
-Lee data/agrodevices/readings.parquet y escribe data/agrodevices/daily.parquet
+Lee data/agrodevices/readings.parquet y units.parquet, añade el índice de humedad relativa
+(0 a 100 según el rango de cada sonda) y escribe data/agrodevices/daily.parquet
 (data/ no se sube a git).
 """
 
@@ -17,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from irrigation_app.aggregation import aggregate_daily  # noqa: E402
+from irrigation_app.scale import add_relative_moisture  # noqa: E402
 
 DATA_DIR = PROJECT_ROOT / "data" / "agrodevices"
 
@@ -24,14 +26,16 @@ DATA_DIR = PROJECT_ROOT / "data" / "agrodevices"
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--readings", type=Path, default=DATA_DIR / "readings.parquet")
+    parser.add_argument("--units", type=Path, default=DATA_DIR / "units.parquet")
     parser.add_argument("--output", type=Path, default=DATA_DIR / "daily.parquet")
     args = parser.parse_args()
 
-    if not args.readings.exists():
-        sys.exit(f"No existe el archivo {args.readings}")
+    for path in (args.readings, args.units):
+        if not path.exists():
+            sys.exit(f"No existe el archivo {path}")
 
     readings = pd.read_parquet(args.readings)
-    daily = aggregate_daily(readings)
+    daily = add_relative_moisture(aggregate_daily(readings), pd.read_parquet(args.units))
 
     print(f"{len(readings):,} lecturas -> {len(daily):,} valores diarios")
     print(f"Unidades: {daily['unit_id'].nunique()}, días: {daily['day'].min().date()} a {daily['day'].max().date()}")
