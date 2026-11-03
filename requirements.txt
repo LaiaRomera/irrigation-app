@@ -3,3 +3,6 @@ psycopg[binary]==3.3.6
 python-dotenv==1.2.4
 streamlit[auth]==1.56.0
 Authlib==1.6.11
+pandas==3.0.6
+pyarrow==25.0.1
+pytest==9.2.0
