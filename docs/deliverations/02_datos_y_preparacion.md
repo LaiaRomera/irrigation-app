@@ -5,11 +5,11 @@
 
 ## Contexto: de qué va mi proyecto
 
-Soy becaria en Agrodevices, una empresa que fabrica sensores de humedad de suelo para agricultura. Mi proyecto es una plataforma que ayuda a un agrónomo a tomar decisiones sobre **cuánto regar, cuándo y por qué**, combinando los datos de esos sensores con la previsión meteorológica.
+Soy becaria en Agrodevices, una empresa que fabrica sensores de humedad de suelo para agricultura. Mi proyecto es una plataforma que ayuda a un agrónomo a tomar decisiones sobre **cuánto regar, cuándo y por qué**, combinando los datos de esos sensores con las imágenes del satélite Sentinel-2 (programa Copernicus de la Agencia Espacial Europea) y la previsión meteorológica.
 
 El proyecto tiene tres piezas que trabajan una detrás de otra:
 
-1. **Un modelo de machine learning que predice** cómo estará la humedad del suelo en los próximos días.
+1. **Un modelo de deep learning que predice** cómo estará la humedad del suelo en los próximos días.
 2. **Un motor de reglas que decide** la recomendación de riego a partir de esa predicción. Es un cálculo normal, no una IA, para que sea siempre reproducible y automático.
 3. **Un modelo de lenguaje que explica** el resultado de ese cálculo en un informe con gráficas y lenguaje natural, para que lo entienda un agrónomo o trabajador del campo.
 
@@ -41,7 +41,7 @@ Con esas filas, el modelo tendrá que aprender a responder a esta pregunta: *dad
 
 - **Decido por días, pero guardo cada 15 minutos.** Los sensores miden cada 15 minutos (96 lecturas al día por sensor), mientras que la meteorología me llega por días. La recomendación es diaria y la semanal es, simplemente, la secuencia de 7 días, así que decido en unidades diarias. Guardo todas las lecturas de 15 minutos tal como llegan, sin resumirlas, y solo las convierto en variables diarias al construir el dataset final (el Gold).
 - **Hora de corte.** La recomendación se calcula con los datos que se guardan a las 05:00 UTC. Por eso cada "día" es la ventana de las 24 horas que termina a las 05:00, tanto para lo que el modelo recibe como para lo que debe predecir. Si usara la media del día completo, estaría mirando lecturas de la tarde, que a las 05:00 todavía no existen, y el modelo parecería mejor de lo que realmente es. 
-- **Histórico.** Lo ideal sería al menos una temporada completa, para que el modelo vea distintas estaciones. Dispongo de, al menos, unos 25.000 registros de varios sensores y parcelas. Si todos fueran lecturas de 15 minutos, equivaldrían a unos 260 días de sensor en total (25.000 / 96), repartidos entre todos los sensores, lo que sería justo para entrenar un modelo, incluso uno clásico. [COMPLETAR: número exacto de sensores y de parcelas, fecha del primer y del último registro, si los 25.000 son lecturas de 15 minutos, y si cubren varias estaciones del año]
+- **Histórico.** Lo ideal sería al menos una temporada completa, para que el modelo vea distintas estaciones. Dispongo de, al menos, unos 25.000 registros de varios sensores y parcelas. Si todos fueran lecturas de 15 minutos, equivaldrían a unos 260 días de sensor en total (25.000 / 96), repartidos entre todos los sensores, lo que sería poco para deep learning. [COMPLETAR: número exacto de sensores y de parcelas, fecha del primer y del último registro, si los 25.000 son lecturas de 15 minutos, y si cubren varias estaciones del año]
 - **Histórico de previsiones.** Para entrenar necesito, además, saber qué se había previsto en cada momento del pasado. Open-Meteo lo ofrece (servicio de ejecuciones anteriores) a partir de enero de 2024 para la mayoría de modelos, y lo pido directamente a ellos cuando lo necesito, sin construir yo otro histórico. Si las lecturas de los sensores son anteriores a enero de 2024, esa parte inicial no tendrá previsiones reales asociadas. [COMPLETAR: fecha del primer registro de los sensores]
 - **Para qué guardo el histórico.** Lo necesito para entrenar y evaluar el modelo. Una vez entrenado, para predecir ya no hace falta todo el histórico, sino solo una ventana reciente (por ejemplo, los últimos 7 días de humedad y de meteorología, que son las entradas del modelo). Aun así conservo el histórico por tres motivos: poder reentrenar el modelo cuando haya más datos y otras estaciones del año, poder comprobar si sus predicciones siguen acertando, y poder repetir los experimentos de este trabajo con los mismos datos. [COMPLETAR: cuánto tiempo conservaré las lecturas de 15 minutos, teniendo en cuenta el espacio de la base de datos]
 
@@ -49,7 +49,7 @@ Con esas filas, el modelo tendrá que aprender a responder a esta pregunta: *dad
 
 ## 2. Fuentes reales y viabilidad
 
-Uso dos fuentes distintas: los sensores de Agrodevices y Open-Meteo para la meteorología.
+Uso tres fuentes distintas: los sensores de Agrodevices, las imágenes del satélite Sentinel-2 (Copernicus, Agencia Espacial Europea) y Open-Meteo para la meteorología.
 
 ### 2.1. Datos de sensores: Agrodevices
 
@@ -65,7 +65,20 @@ Estos datos son propiedad de Agrodevices, que fabrica y mantiene los sensores.
 - **Actualización:** en el diseño de mi aplicación, los datos de los sensores se importan una vez al día, a las 05:00. [COMPLETAR]
 - **Un dato que todavía no tengo confirmado:** qué variable exacta mide cada sensor y en qué unidad. Según la demo de la empresa, son sondas de tipo FDR (que miden la humedad del suelo) con sensores a 10, 20, 30 y 50 cm de profundidad, y envían sus datos cada 12 horas. [COMPLETAR: confirmar la variable, la unidad, las profundidades reales y la frecuencia de envío]
 
-### 2.2. Datos meteorológicos: Open-Meteo
+### 2.2. Imágenes de satélite: Sentinel-2
+
+Además de las sondas, la plataforma de la empresa (Zahorí) incorpora imágenes del satélite **Sentinel-2**, que pertenece al programa europeo **Copernicus** de la Agencia Espacial Europea (ESA). De cada imagen se calcula el **NDVI**, un índice de vegetación: un número que indica lo verde y sano que está el cultivo, y cuyos valores bajos pueden señalar un problema (falta de agua, plaga, enfermedad...).
+
+Según la demo de la empresa:
+1. El servidor descarga las imágenes de Copernicus.
+2. Calcula el NDVI en píxeles de 10 metros y lo agrupa por sector de la parcela.
+3. Combina el NDVI con las sondas en un diagnóstico: por ejemplo, un NDVI bajo con la sonda normal apunta a un problema que no es de agua, y un NDVI bajo con la sonda sin respuesta al riego apunta a un fallo de riego.
+
+- **Cobertura y actualización:** la demo usa un pase cada 2,5 días. La documentación que he consultado indica que, con dos satélites, el intervalo de revisita es de 5 días en el ecuador y de unos 2 a 3 días en latitudes medias. Las imágenes con muchas nubes se descartan (la demo muestra un ejemplo con un 85 % de nubosidad), así que habrá huecos sin dato.
+- **Acceso:** a través de la plataforma de la empresa. [COMPLETAR: confirmar si puedo usar los NDVI ya calculados, en qué formato y desde qué fecha hay histórico]
+- **Papel en mi proyecto:** es un dato complementario: el modelo principal predice la humedad del suelo con sensores y meteorología. [COMPLETAR: decidir si el NDVI entra como dato del modelo; si entra, hay que añadir una tabla a la base de datos]
+
+### 2.3. Datos meteorológicos: Open-Meteo
 
 Open-Meteo es un servicio gratuito de datos meteorológicos, accesible por API, sin necesidad de clave. Uso tres de sus servicios:
 
@@ -80,7 +93,7 @@ Open-Meteo es un servicio gratuito de datos meteorológicos, accesible por API, 
 **Cómo consigo las previsiones del pasado.** Uso el servicio de ejecuciones anteriores, descargado por horas y sumado por días: me da historia desde enero de 2024. No construyo otro histórico con mis propias capturas: la previsión de cada día se descarga igualmente para poder calcular la recomendación de ese día, y queda reflejada en ella. [COMPLETAR: comprobar que los valores de las ejecuciones anteriores se parecen a los de la previsión real, porque el modelo se entrena con unos y se usa con los otros]
 
 
-### 2.3. Viabilidad y alternativas
+### 2.4. Viabilidad y alternativas
 
 - **Open-Meteo es viable:** no necesita registro ni clave, tiene un límite gratuito amplio (600 llamadas por minuto, 5.000 por hora y 10.000 por día) y mis dos parcelas de prueba están muy lejos de ese límite.
 - **Alternativa si Open-Meteo no estuviera disponible:** descargar el reanálisis ERA5 directamente de Copernicus, la fuente de la que bebe Open-Meteo para el histórico. Para la previsión, otros servicios meteorológicos abiertos.
@@ -94,6 +107,7 @@ Open-Meteo es un servicio gratuito de datos meteorológicos, accesible por API, 
 
 - **Open-Meteo.** Los datos se ofrecen con licencia **CC BY 4.0**, es decir, se pueden usar citando la fuente. El uso gratuito es solo **no comercial**; entre los ejemplos que acepta están el contenido educativo y la investigación pública. Si Agrodevices lo desplegara como parte de su producto, tendría que contratar un plan.
 - **Datos de Agrodevices.** Son propiedad de la empresa, que me autoriza a usarlos anonimizados para este trabajo académico.
+- **Imágenes de Sentinel-2.** Los datos de Copernicus Sentinel se ofrecen con acceso libre, completo y gratuito, también para uso comercial, con la obligación de citar la fuente ("Copernicus Sentinel data" y el año) cuando se comuniquen o distribuyan públicamente. Lo cito en la memoria.
 
 ### 3.2. Datos personales
 
@@ -113,7 +127,8 @@ Organizo el trabajo en tres capas, de lo más crudo a lo más listo para usar:
 flowchart LR
     A["Sensores de Agrodevices<br/>(exportación de la empresa)"] --> B
     O["Open-Meteo<br/>(previsión, histórico, ejecuciones anteriores)"] --> B
-    B["BRONZE<br/>dato tal como llega"] --> S["SILVER<br/>dato limpio y ordenado<br/>(base de datos PostgreSQL)"]
+    SAT["Sentinel-2 · Copernicus<br/>(NDVI por sector, vía la plataforma de la empresa)"] --> B
+    B["BRONZE<br/>dato tal como llega"] --> S["SILVER<br/>dato limpio y ordenado<br/>(base de datos MySQL)"]
     S --> G["GOLD<br/>dataset para el modelo<br/>(una fila por sensor y día)"]
     G --> M["Modelo de humedad del suelo<br/>(siguiente fase)"]
 ```
@@ -124,11 +139,12 @@ Aquí **no se modifica nada**. Guardo cada dato exactamente como lo entrega su f
 
 - **Open-Meteo:** cada respuesta JSON se guarda sin tocar, junto con los parámetros de la petición y la fecha y hora de la descarga. Eso hace el proceso reproducible: con el mismo script se obtienen los mismos datos.
 - **Agrodevices:** el archivo exportado, tal como me lo han entregado, con la información de los sensores en intervalos de 15 minutos.
+- **Sentinel-2:** el NDVI por sector y fecha, tal como lo entrega la plataforma de la empresa. [COMPLETAR: formato y ubicación]
 - Estos archivos **no se suben al repositorio**, por tamaño y por privacidad. En el repositorio dejo solo una muestra pequeña y las instrucciones para generar el resto. [COMPLETAR: ruta de la muestra]
 
 ### 4.2. Silver: el dato limpio
 
-Es el paso donde corrijo y ordeno. El resultado se guarda en las tablas de mi base de datos PostgreSQL (`sensor_reading`, `historical_weather` y `forecast_data`), que ya diseñé y comprobé. Las transformaciones son:
+Es el paso donde corrijo y ordeno. El resultado se guarda en las tablas de mi base de datos MySQL (`sensor_reading`, `historical_weather` y `forecast_data`), que ya diseñé y comprobé. Si decido usar el NDVI, hará falta una tabla más, por diseñar, con una fila por sector y fecha de pase del satélite. Las transformaciones son:
 
 | Qué | Cómo lo resuelvo |
 |---|---|
@@ -160,6 +176,7 @@ Todavía no he cargado los 25.000 registros reales; en cuanto lo haga, completar
 | `rainMm`, `eto`, `tMedia` | Lluvia, ET0 y temperatura media de ese día y de los anteriores |
 | `rain_forecast_d1` … `d7`, `eto_forecast_d1` … `d7` | Lluvia y ET0 que se preveían ese día para los 7 días siguientes |
 | `day_of_year` | Día del año, para que el modelo capte las estaciones |
+| `ndvi_last`, `ndvi_age_days` (opcional) | Último NDVI disponible del sector y cuántos días tiene, ya que el satélite pasa cada pocos días y hay huecos por nubes. Solo si decido usarlo |
 | Parámetros de parcela | Cultivo, tipo de suelo, etc., solo cuando existan |
 | `target_moisture_d1` … `d7` | **Lo que se quiere predecir:** la humedad media de cada una de las 7 ventanas siguientes |
 
@@ -176,16 +193,9 @@ El flujo completo se ejecuta en tres pasos: descargar y guardar el Bronze, limpi
 ## 5. Riesgos y limitaciones
 
 - **Datos que me faltan.** No tengo los riegos aplicados ni los parámetros del cultivo y del suelo, que influyen mucho en cómo cambia la humedad. Tampoco tengo todavía confirmado qué mide exactamente cada sensor ni en qué unidad. Además, las previsiones pasadas solo existen desde enero de 2024.
-- **Cantidad de datos.** Unos 25.000 registros pueden ser pocos: si fueran lecturas de 15 minutos, serían unos 260 días de sensor, y lo que cuenta no son las filas, sino los días distintos de información y que haya varias estaciones. Como regla orientativa, los modelos clásicos pueden funcionar con unos pocos miles de filas, y con muchas menos hay riesgo de sobreajuste (que el modelo memorice en lugar de aprender). Lo comprobaré con una curva de aprendizaje (entrenar con cantidades crecientes de datos y ver si el error sigue bajando). Si hay pocos datos, usaré un único modelo para todos los sensores, un modelo sencillo y regularizado, y compararé siempre con modelos más simples.
-- **Sesgos.** El histórico de Open-Meteo es un reanálisis con una resolución de 1 a 11 km, no una medición en la parcela, así que puede no reflejar el microclima real. Además, las lecturas interpoladas por la empresa pueden ocultar fallos de sensor: ya son un dato "estimado" y, en un mes, puede haber unos 130 sin que signifique un error, puede ser simplemente un momento sin cobertura.- **Dependencia de las fuentes.** Si Open-Meteo dejara de estar disponible usaría otra API emteorológica gratuita como AEMET; si fallaran los datos de Agrodevices, un conjunto público de humedad del suelo para demostrar el método.
+- **Cantidad de datos.** Unos 25.000 registros pueden ser pocos para deep learning: si fueran lecturas de 15 minutos, serían unos 260 días de sensor, y lo que cuenta no son las filas, sino los días distintos de información y que haya varias estaciones. Como regla orientativa, los modelos clásicos pueden funcionar con unos pocos miles de filas y el deep learning pide varios miles de ejemplos de varios sensores. Lo comprobaré con una curva de aprendizaje (entrenar con cantidades crecientes de datos y ver si el error sigue bajando). Si hay pocos datos, usaré un único modelo para todos los sensores, una red pequeña y compararé siempre con modelos sencillos.
+- **Sesgos.** El histórico de Open-Meteo es un reanálisis con una resolución de 1 a 11 km, no una medición en la parcela, así que puede no reflejar el microclima real. Además, las lecturas interpoladas por la empresa pueden ocultar fallos de sensor: ya son un dato "estimado" y, en un mes, puede haber unos 130 sin que signifique un error, puede ser simplemente un momento sin cobertura. Las imágenes de satélite solo llegan cada pocos días y se descartan cuando hay nubes.
+- **Dependencia de las fuentes.** Si Open-Meteo dejara de estar disponible usaría otra API emteorológica gratuita como AEMET; si fallaran los datos de Agrodevices, un conjunto público de humedad del suelo (ISMN) para demostrar el método.
 - **Licencia.** El uso gratuito de Open-Meteo es solo no comercial: un despliegue comercial de Agrodevices requeriría un plan de pago.
 
 ---
-
-## Referencias
-
-- Open-Meteo, condiciones de uso y licencia: https://open-meteo.com/en/terms
-- Open-Meteo, API de previsión: https://open-meteo.com/en/docs
-- Open-Meteo, API de histórico (reanálisis): https://open-meteo.com/en/docs/historical-weather-api
-- Open-Meteo, API de ejecuciones anteriores: https://open-meteo.com/en/docs/previous-runs-api
-- FAO, balance hídrico del cultivo y ET0: https://www.fao.org/4/x0490e/x0490e0e.htm
