@@ -17,6 +17,7 @@ PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 REQUEST_TIMEOUT_SECONDS = 120
 ATTEMPTS = 3
 RETRY_WAIT_SECONDS = 5
+TRANSIENT_STATUS_CODES = (502, 503, 504)
 HOURS_PER_DAY = 24
 
 # Antelación de la previsión (`lead_days`): `N` es «la previsión que se hizo N días antes del día
@@ -51,22 +52,41 @@ def _column(variable: str, lead_days: int) -> str:
     return f"{variable}_previous_day{lead_days}"
 
 
+def _reason(response) -> str:
+    """El motivo que Open-Meteo da en el cuerpo de un error, o "" si no hay o no se puede leer."""
+    try:
+        return str(response.json().get("reason", ""))
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _is_transient(response) -> bool:
+    """Fallos que suelen pasar solos: error del servidor (502, 503, 504) o demasiadas peticiones a la vez.
+
+    Un 429 por límite de la capa gratuita (por hora o por día) no es transitorio: reintentar no sirve.
+    """
+    if response.status_code in TRANSIENT_STATUS_CODES:
+        return True
+    return response.status_code == 429 and "concurrent" in _reason(response).lower()
+
+
 def _get_json(url: str, params: dict, session) -> dict:
     """Hace la petición y devuelve el JSON. Los errores no incluyen la URL (lleva coordenadas)."""
     for attempt in range(1, ATTEMPTS + 1):
         try:
             response = (session or requests).get(url, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
-            break
         except requests.exceptions.RequestException as error:
             # El servidor a veces responde muy lento un momento: se reintenta antes de rendirse.
             if attempt == ATTEMPTS:
                 raise WeatherError(f"Open-Meteo no respondió ({type(error).__name__})") from error
             time.sleep(RETRY_WAIT_SECONDS * attempt)
+            continue
+        if attempt < ATTEMPTS and _is_transient(response):
+            time.sleep(RETRY_WAIT_SECONDS * attempt)
+            continue
+        break
     if response.status_code >= 400:
-        try:
-            reason = str(response.json().get("reason", ""))
-        except (ValueError, AttributeError):
-            reason = ""
+        reason = _reason(response)
         error_class = RateLimitedError if response.status_code == 429 else WeatherError
         raise error_class(f"Open-Meteo respondió {response.status_code}" + (f": {reason}" if reason else ""))
     return response.json()

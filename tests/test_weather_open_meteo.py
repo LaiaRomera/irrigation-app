@@ -135,6 +135,40 @@ def test_a_slow_answer_is_retried_and_then_succeeds(monkeypatch):
     assert len(session.calls) == 2 and len(daily) == 2
 
 
+class Sequence(FakeSession):
+    """Responde en orden con las respuestas dadas y se queda con la última."""
+
+    def __init__(self, *responses):
+        super().__init__()
+        self.responses = list(responses)
+
+    def get(self, url, params, timeout):
+        self.calls.append((url, params, timeout))
+        return self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
+
+
+def test_a_server_error_is_retried(monkeypatch):
+    monkeypatch.setattr("irrigation_app.weather.open_meteo.time.sleep", lambda seconds: None)
+    session = Sequence(FakeResponse(502, {"reason": "Bad gateway"}), FakeResponse(200, make_response()))
+    daily = fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), lead_days=(1,), session=session)
+    assert len(session.calls) == 2 and len(daily) == 2
+
+
+def test_too_many_concurrent_requests_is_retried(monkeypatch):
+    monkeypatch.setattr("irrigation_app.weather.open_meteo.time.sleep", lambda seconds: None)
+    session = Sequence(FakeResponse(429, {"reason": "Too many concurrent requests"}), FakeResponse(200, make_response()))
+    fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), lead_days=(1,), session=session)
+    assert len(session.calls) == 2
+
+
+def test_a_usage_limit_is_not_retried(monkeypatch):
+    monkeypatch.setattr("irrigation_app.weather.open_meteo.time.sleep", lambda seconds: None)
+    session = Sequence(FakeResponse(429, {"reason": "Hourly API request limit exceeded"}))
+    with pytest.raises(RateLimitedError):
+        fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), session=session)
+    assert len(session.calls) == 1
+
+
 def test_it_gives_up_after_three_attempts(monkeypatch):
     monkeypatch.setattr("irrigation_app.weather.open_meteo.time.sleep", lambda seconds: None)
     session = FakeSession(error=requests.exceptions.ReadTimeout("lento"))

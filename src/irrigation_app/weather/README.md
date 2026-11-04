@@ -40,4 +40,6 @@ No es un servicio: no tiene API propia, ni tareas programadas, ni caché. Quien 
 
 ## Límites de uso
 
-La capa gratuita de Open-Meteo admite 600 peticiones por minuto, 5.000 por hora y 10.000 al día, solo para uso no comercial. Descargar el histórico de unas 73 ubicaciones son unas 73 peticiones por variable.
+La capa gratuita de Open-Meteo admite 600 llamadas por minuto, 5.000 por hora y 10.000 al día, solo para uso no comercial. **Una petición grande cuenta como varias llamadas**: más de 10 variables o más de 14 días se pesan en proporción (aproximadamente variables/10 × días/14). Cada antelación de cada variable cuenta como una variable, así que las 5 variables con las 7 antelaciones son 35.
+
+Pedir 885 días para cada una de las 73 ubicaciones costaría unas 16.000 llamadas, más que el límite diario. Por eso el script de descarga pide a cada ubicación solo los días en que sus unidades tienen lecturas (mediana de 248 días): unas **6.500 llamadas**. Los fallos pasajeros (502, 503, 504 y «demasiadas peticiones a la vez») se reintentan; un límite de uso por hora o por día no, porque no sirve de nada.
