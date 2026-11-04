@@ -128,7 +128,7 @@ Unicidad: (`sensor_id`, `measured_at`), para no duplicar una lectura si se vuelv
 
 ### Columnas meteorológicas comunes
 
-Las unidades son las que Open-Meteo devuelve por defecto y que el conector antiguo no modifica. **Hay que verificarlas contra su documentación al implementar el conector.** Los nombres se muestran con las mayúsculas originales de la empresa; en la base son minúsculas.
+Las unidades son las que Open-Meteo devuelve por defecto y que el conector no modifica. **Hay que verificarlas contra su documentación al implementar el conector.** Los nombres se muestran con las mayúsculas originales de la empresa; en la base son minúsculas.
 
 | Columna | Tipo | Unidad | Solo previsión | Descripción |
 |---|---|---|---|---|
@@ -230,7 +230,7 @@ Unicidad: (`recommendation_id`, `report_type`, `generator`, `generator_version`)
 
 ### `job_run`
 
-Una fila por ejecución del proceso de tareas. Sustituye al `api_log` del servicio antiguo, que registraba cada petición a Open-Meteo.
+Una fila por ejecución del proceso de tareas. Registra la ejecución, no cada petición a Open-Meteo.
 
 | Columna | Tipo | Obligatoria | Descripción |
 |---|---|---|---|

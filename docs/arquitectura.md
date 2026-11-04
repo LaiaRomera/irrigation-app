@@ -216,20 +216,20 @@ Todo debe ser gratuito durante el TFM; la empresa lo adaptará después a sus ne
 
 **Separar el TFM del despliegue empresarial.** La conclusión antigua de que ofrecer el servicio gratis a clientes equivale a uso no comercial de Open-Meteo requiere revisión: sus condiciones incluyen la integración en productos comerciales. Pendiente de revisar.
 
-## 10. Reutilización del servicio antiguo
+## 10. Conector de Open-Meteo
 
-Del servicio meteorológico anterior (`agrodevices-meteo-app`) se integran y adaptan las piezas útiles; **no** se depende de su endpoint independiente ni se reescribe por reescribir. De él solo se han revisado `src/providers/open_meteo.py` y `sql/create_schema.sql`; el resto se conoce por su descripción.
+El conector vive en su propio módulo, con su documentación: [src/irrigation_app/weather/README.md](../src/irrigation_app/weather/README.md).
 
-**Se aprovecha (a verificar al implementar):**
-- El conector de Open-Meteo: previsión a 7 días y reanálisis del histórico (API de archivo) por separado, pidiendo varias ubicaciones en una sola petición con coordenadas separadas por comas (la respuesta es un diccionario para una ubicación y una lista, en el mismo orden, para varias), con `timezone=auto`, validación de la estructura de la respuesta y errores que no incluyen la URL.
-- La lista de variables diarias y la tabla de códigos meteorológicos WMO.
+**Qué hace:**
+- Previsión, previsiones archivadas (*Previous Runs*, para entrenar) y reanálisis del histórico (API de archivo), cada uno por separado.
+- Pide varias ubicaciones en una sola petición con coordenadas separadas por comas (la respuesta es un diccionario para una ubicación y una lista, en el mismo orden, para varias), valida la estructura de la respuesta y no incluye la URL en los errores.
+- Lista de variables diarias y tabla de códigos meteorológicos WMO.
 
-**No se hereda:**
-- La API REST, el límite de peticiones, el scheduler dentro del servicio y Render.
-- La tabla `parcel_config` con las coordenadas como identidad de la parcela, y `api_log`.
-- La previsión sobrescrita en su sitio ni el texto del estado del cielo (aquí se guarda el código WMO).
-- La conservación del UV de la previsión al pasar a día real.
-- Las restricciones de MySQL 5.6 y del plan gratuito de Render.
+**Decisiones de diseño:**
+- Es un conector, no un servicio: sin API REST, sin límite de peticiones propio y sin planificador dentro; quien lo use lo llama como una función.
+- Las coordenadas no son la identidad de la parcela.
+- La previsión no se sobrescribe en su sitio y se guarda el código WMO, no el texto del estado del cielo.
+- No se conserva el UV de la previsión al pasar a día real.
 
 ## 11. Limitaciones y riesgos conocidos
 

@@ -13,7 +13,7 @@ El proyecto está en **fase de diseño**: todavía no hay web, tareas ni motor.
 | Arquitectura y decisiones | Documentadas |
 | Esquema de la base de datos (12 tablas, PostgreSQL con pgvector) | Hecho y validado en Docker local y en Aiven PostgreSQL |
 | Login con Auth0 y Streamlit | Probado en local; pendiente en Streamlit Community Cloud |
-| Conector de Open-Meteo | Por hacer (se adapta el del servicio antiguo) |
+| Conector de Open-Meteo | Por hacer ([src/irrigation_app/weather](src/irrigation_app/weather/README.md)) |
 | Modelo de humedad del suelo, motor, modelo de lenguaje, informes, alertas, tareas diarias, web | Por hacer |
 
 ## Documentación
@@ -68,7 +68,3 @@ El script solo actúa sobre `irrigation_app` y no hace nada si ya tiene tablas.
 - **Secretos:** nunca en el código ni en git. `.env`, `.env.*` (salvo `.env.example`), `*.pem` y `.streamlit/secrets.toml` están ignorados.
 - **Sin datos inventados:** columnas de sensores, unidades, calibraciones, parámetros agronómicos y umbrales que aún no se conocen quedan marcados como pendientes.
 - **Un cambio pequeño cada vez**, comprobado antes de seguir.
-
-## Servicio anterior
-
-El proyecto parte de un servicio meteorológico previo (`agrodevices-meteo-app`) del que se reutilizan y adaptan piezas como el conector de Open-Meteo. No se depende de su API ni de su base de datos. Detalle en [docs/arquitectura.md](docs/arquitectura.md), sección 10.
