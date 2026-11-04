@@ -3,7 +3,7 @@
 Uso (desde la raíz del proyecto, después de prepare_agrodevices_units.py y prepare_daily_readings.py):
     .venv/Scripts/python scripts/download_weather.py
 
-Pide, para cada ubicación (unidades a menos de 1 km agrupadas), las antelaciones de 1 a 7 días
+Pide, para cada ubicación (unidades a menos de 1 km agrupadas), las antelaciones de 0 a 6 días
 entre el primer y el último día con lecturas de sus unidades (unas 6.500 llamadas de las 10.000
 diarias de la capa gratuita; el límite por hora es de 5.000, así que puede parar y pedir que se
 vuelva a ejecutar más tarde). Cada ubicación se guarda en su propio archivo en

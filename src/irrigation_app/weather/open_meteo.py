@@ -8,26 +8,29 @@ de los sensores): suma para lluvia y ET₀, media para el resto.
 from __future__ import annotations
 
 import time
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import requests
 
 PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
 REQUEST_TIMEOUT_SECONDS = 120
+MAX_DAYS_PER_REQUEST = 60
 ATTEMPTS = 3
 RETRY_WAIT_SECONDS = 5
 TRANSIENT_STATUS_CODES = (502, 503, 504)
 HOURS_PER_DAY = 24
 
-# Antelación de la previsión (`lead_days`): `N` es «la previsión que se hizo N días antes del día
-# previsto». El modelo predice la humedad de los días 1 a 7, y en producción, para el día de hoy
-# más N, solo existe la previsión de hoy, hecha con N días de antelación, que es menos exacta que
-# la de la víspera. Si se entrenara con la de 1 día (la más exacta), el modelo se fiaría de una
-# calidad que no tendrá al usarlo y fallaría. Por eso se entrena, para cada horizonte N, con la
-# previsión de N días de antelación, y se piden todas.
+# Antelación de la previsión (`lead_days`): `k` es «la previsión que se hizo k días antes del día
+# previsto»; la 0 es la ejecución más reciente, la del propio día. Un ejemplo de horizonte N
+# predice el cambio entre las 05:00 UTC del día de origen y las 05:00 UTC N días después, así que
+# le importa el tiempo de los días de origen a origen+N−1 (el del propio origen incluido, que es
+# el que está cayendo), cada día con su antelación: el día origen+k con la antelación k. En
+# producción solo existe la previsión de hoy, que para cada día tiene justo esa antelación y es
+# menos exacta cuanto más lejos. Si se entrenara con la más exacta, el modelo se fiaría de una
+# calidad que no tendrá al usarlo y fallaría. Por eso se piden las antelaciones de 0 a 6.
 FORECAST_HORIZON_DAYS = 7
-ALL_LEAD_DAYS = tuple(range(1, FORECAST_HORIZON_DAYS + 1))
+ALL_LEAD_DAYS = tuple(range(FORECAST_HORIZON_DAYS))
 
 # Nombre propio -> (variable de Open-Meteo, cómo se resume un día).
 DAILY_VARIABLES = {
@@ -49,7 +52,9 @@ class RateLimitedError(WeatherError):
 
 
 def _column(variable: str, lead_days: int) -> str:
-    return f"{variable}_previous_day{lead_days}"
+    # La antelación 0 es la ejecución más reciente y Open-Meteo la devuelve con el nombre de la
+    # variable a secas, sin sufijo (comprobado el 4 de noviembre de 2026).
+    return variable if lead_days == 0 else f"{variable}_previous_day{lead_days}"
 
 
 def _reason(response) -> str:
@@ -130,17 +135,26 @@ def fetch_previous_runs(
 ) -> pd.DataFrame:
     """Previsiones diarias de una ubicación entre dos fechas (inclusive), con `lead_days` días de antelación.
 
-    Por defecto, todas las antelaciones de 1 a 7 (ver `ALL_LEAD_DAYS`).
+    Por defecto, todas las antelaciones de 0 a 6 (ver `ALL_LEAD_DAYS`).
 
-    Una fila por día y antelación, con las variables de `DAILY_VARIABLES`. `session` permite
+    Una fila por día y antelación, con las variables de `DAILY_VARIABLES`. Los rangos largos se
+    piden en trozos de `MAX_DAYS_PER_REQUEST` días: con 35 variables una sola petición de casi tres
+    años a veces no responde a tiempo, y partida cuesta lo mismo de cuota. `session` permite
     sustituir `requests` en las pruebas.
     """
-    params = {
-        "latitude": float(latitude),
-        "longitude": float(longitude),
-        "hourly": ",".join(_column(variable, lead) for lead in lead_days for variable, _ in DAILY_VARIABLES.values()),
-        "start_date": start.isoformat(),
-        "end_date": end.isoformat(),
-        "timezone": "UTC",
-    }
-    return previous_runs_to_daily(_get_json(PREVIOUS_RUNS_URL, params, session), lead_days)
+    hourly = ",".join(_column(variable, lead) for lead in lead_days for variable, _ in DAILY_VARIABLES.values())
+    pieces = []
+    window_start = start
+    while window_start <= end:
+        window_end = min(window_start + timedelta(days=MAX_DAYS_PER_REQUEST - 1), end)
+        params = {
+            "latitude": float(latitude),
+            "longitude": float(longitude),
+            "hourly": hourly,
+            "start_date": window_start.isoformat(),
+            "end_date": window_end.isoformat(),
+            "timezone": "UTC",
+        }
+        pieces.append(previous_runs_to_daily(_get_json(PREVIOUS_RUNS_URL, params, session), lead_days))
+        window_start = window_end + timedelta(days=1)
+    return pd.concat(pieces, ignore_index=True) if pieces else pd.DataFrame(columns=DAILY_COLUMNS)

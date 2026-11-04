@@ -1,6 +1,6 @@
 """Pruebas del conector de Open-Meteo, sin red (respuestas sintéticas)."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
@@ -29,7 +29,8 @@ def make_response(days=2, lead_days=(1,), missing_hours=0, empty_first_day=False
                 values[:24] = [None] * 24
             for index in range(missing_hours):
                 values[30 + index] = None
-            hourly[f"{variable}_previous_day{lead}"] = values
+            # La antelación 0 viene con el nombre de la variable a secas.
+            hourly[variable if lead == 0 else f"{variable}_previous_day{lead}"] = values
     return {"hourly": hourly}
 
 
@@ -97,12 +98,36 @@ def test_fetch_asks_for_the_right_columns_and_dates():
     assert "precipitation_previous_day1" in params["hourly"] and "et0_fao_evapotranspiration_previous_day3" in params["hourly"]
 
 
-def test_by_default_it_asks_for_every_lead_time_from_1_to_7():
-    session = FakeSession(FakeResponse(200, make_response(lead_days=tuple(range(1, 8)))))
+def test_by_default_it_asks_for_every_lead_time_from_0_to_6():
+    session = FakeSession(FakeResponse(200, make_response(lead_days=tuple(range(0, 7)))))
     daily = fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), session=session)
-    hourly = session.calls[0][1]["hourly"]
-    assert all(f"precipitation_previous_day{lead}" in hourly for lead in range(1, 8))
-    assert sorted(set(daily["lead_days"])) == [1, 2, 3, 4, 5, 6, 7]
+    asked = session.calls[0][1]["hourly"].split(",")
+    assert "precipitation" in asked and "et0_fao_evapotranspiration" in asked  # antelación 0: sin sufijo
+    assert all(f"precipitation_previous_day{lead}" in asked for lead in range(1, 7))
+    assert "precipitation_previous_day0" not in asked and "precipitation_previous_day7" not in asked
+    assert sorted(set(daily["lead_days"])) == [0, 1, 2, 3, 4, 5, 6]
+
+
+def test_a_long_range_is_split_in_requests_without_gaps_or_overlaps(monkeypatch):
+    monkeypatch.setattr("irrigation_app.weather.open_meteo.MAX_DAYS_PER_REQUEST", 3)
+
+    class ByDates(FakeSession):
+        def get(self, url, params, timeout):
+            self.calls.append((url, params, timeout))
+            first = date.fromisoformat(params["start_date"])
+            last = date.fromisoformat(params["end_date"])
+            days = (last - first).days + 1
+            response = make_response(days=days, lead_days=(0,))
+            response["hourly"]["time"] = [
+                f"{(first + timedelta(days=d)).isoformat()}T{h:02d}:00" for d in range(days) for h in range(24)
+            ]
+            return FakeResponse(200, response)
+
+    session = ByDates()
+    daily = fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 8), lead_days=(0,), session=session)
+    windows = [(c[1]["start_date"], c[1]["end_date"]) for c in session.calls]
+    assert windows == [("2026-01-01", "2026-01-03"), ("2026-01-04", "2026-01-06"), ("2026-01-07", "2026-01-08")]
+    assert list(daily["day"].dt.day) == list(range(1, 9))
 
 
 def test_rate_limit_has_its_own_error_with_the_reason():

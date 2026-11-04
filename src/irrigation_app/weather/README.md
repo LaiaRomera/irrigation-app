@@ -15,13 +15,13 @@ Conector que obtiene la meteorología que necesita el proyecto: las variables di
 
 ## Qué se ha comprobado (4 de noviembre de 2026)
 
-- **Previous Runs** devuelve datos por horas completos (lluvia, ET₀, temperatura, humedad y viento) con 1, 3 y 7 días de antelación desde junio de 2024. En enero de 2024 los valores vienen vacíos. Cubre todo el periodo de las sondas.
+- **Previous Runs** devuelve datos por horas completos (lluvia, ET₀, temperatura, humedad y viento) con 0, 1, 3 y 7 días de antelación desde junio de 2024 (la 0, que es la ejecución más reciente, se comprobó el 4 de noviembre de 2026: viene completa). En enero de 2024 los valores vienen vacíos. Cubre todo el periodo de las sondas.
 - **Agregar por horas es válido:** en la previsión, el valor diario de Open-Meteo coincide con la suma (lluvia, ET₀) o la media (temperatura, humedad, viento) de sus 24 valores horarios. La diferencia máxima es de 0,02 mm en la ET₀, por redondeo.
-- Las peticiones aceptan un rango de fechas. **Probado con una ubicación:** 885 días (junio de 2024 a noviembre de 2026) con las antelaciones de 1, 3 y 7 días en una sola petición, unos 8 s, sin ningún hueco. A veces el servidor tarda mucho en un momento dado (una petición pasó de 60 s y otra tardó 28 s), por eso el conector espera hasta 120 s y reintenta hasta 3 veces.
+- Las peticiones aceptan un rango de fechas. **Probado con una ubicación:** 885 días (junio de 2024 a noviembre de 2026) con las antelaciones de 1, 3 y 7 días (15 variables) en una sola petición, unos 8 s, sin ningún hueco; y 5 días con las 7 antelaciones de 0 a 6 (35 variables), sin huecos. Con las 35 variables, una petición de 885 días se agotó tres veces (120 s cada una): el servidor a veces responde muy lento (otra petición tardó 28 s y otra pasó de 60 s). Por eso el conector parte los rangos largos en trozos de 60 días (cuestan lo mismo de cuota), espera hasta 120 s por petición y reintenta hasta 3 veces. El partido en trozos está probado sin red; con datos reales se comprobará en la primera descarga.
 
 ## Por qué hay varias antelaciones (`lead_days`)
 
-La antelación es cuántos días antes del día previsto se hizo la previsión. Para el viernes, la previsión del jueves (1 día) es mejor que la del martes (3 días). El modelo de humedad predice los días 1 a 7, y en producción, para el día de hoy más N, solo hay la previsión de hoy, hecha con N días de antelación. Si se entrenara con la de 1 día, que es la más exacta, el modelo se fiaría de una calidad que no tendrá al usarlo y fallaría. Por eso, **para cada horizonte N se entrena con la previsión de N días de antelación**, y el conector pide todas, de 1 a 7.
+La antelación es cuántos días antes del día previsto se hizo la previsión (0 es la del propio día). Para el viernes, la previsión del jueves (1 día) es mejor que la del martes (3 días). El modelo de humedad predice el cambio entre las 05:00 UTC de hoy y las de dentro de N días (N de 1 a 7), así que le importa el tiempo de los días de hoy a hoy+N−1, y en producción solo hay la previsión de hoy, que para cada uno de esos días tiene justo la antelación 0, 1, 2… Si se entrenara con la previsión más exacta (la de 1 día para todos), el modelo se fiaría de una calidad que no tendrá al usarlo y fallaría. Por eso **cada día se toma con su antelación** y el conector pide todas, de 0 a 6. (Una versión anterior pedía de 1 a 7 y dejaba fuera el tiempo del propio día de origen; se corrigió el 4 de noviembre de 2026 antes de descargar.)
 
 ## Uso
 
@@ -29,7 +29,7 @@ La antelación es cuántos días antes del día previsto se hizo la previsión. 
 from datetime import date
 from irrigation_app.weather.open_meteo import fetch_previous_runs
 
-fetch_previous_runs(41.56, 0.31, date(2024, 6, 1), date(2026, 11, 2))  # antelaciones de 1 a 7 días
+fetch_previous_runs(41.56, 0.31, date(2024, 6, 1), date(2026, 11, 2))  # antelaciones de 0 a 6 días
 ```
 
 Devuelve una fila por día y antelación con `precipitation_mm`, `et0_mm`, `temperature_c`, `humidity_pct` y `wind_kmh`. Un día solo tiene valor si Open-Meteo dio sus 24 horas; los días sin ningún valor no se devuelven. Los errores no incluyen la URL, porque lleva las coordenadas.
