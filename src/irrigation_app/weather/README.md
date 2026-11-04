@@ -17,7 +17,18 @@ Conector que obtiene la meteorología que necesita el proyecto: las variables di
 
 - **Previous Runs** devuelve datos por horas completos (lluvia, ET₀, temperatura, humedad y viento) con 1, 3 y 7 días de antelación desde junio de 2024. En enero de 2024 los valores vienen vacíos. Cubre todo el periodo de las sondas.
 - **Agregar por horas es válido:** en la previsión, el valor diario de Open-Meteo coincide con la suma (lluvia, ET₀) o la media (temperatura, humedad, viento) de sus 24 valores horarios. La diferencia máxima es de 0,02 mm en la ET₀, por redondeo.
-- Las peticiones aceptan un rango de fechas y varias ubicaciones, y tardan unos 200 ms.
+- Las peticiones aceptan un rango de fechas. **Probado con una ubicación:** 885 días (junio de 2024 a noviembre de 2026) con las antelaciones de 1, 3 y 7 días en una sola petición, unos 8 s, sin ningún hueco. A veces el servidor tarda mucho en un momento dado (una petición pasó de 60 s y otra tardó 28 s), por eso el conector espera hasta 120 s y reintenta hasta 3 veces.
+
+## Uso
+
+```python
+from datetime import date
+from irrigation_app.weather.open_meteo import fetch_previous_runs
+
+fetch_previous_runs(41.56, 0.31, date(2024, 6, 1), date(2026, 11, 2), lead_days=(1, 3, 7))
+```
+
+Devuelve una fila por día y antelación con `precipitation_mm`, `et0_mm`, `temperature_c`, `humidity_pct` y `wind_kmh`. Un día solo tiene valor si Open-Meteo dio sus 24 horas; los días sin ningún valor no se devuelven. Los errores no incluyen la URL, porque lleva las coordenadas.
 
 ## Qué no incluye
 
