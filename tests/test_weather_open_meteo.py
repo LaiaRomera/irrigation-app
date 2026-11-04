@@ -97,6 +97,14 @@ def test_fetch_asks_for_the_right_columns_and_dates():
     assert "precipitation_previous_day1" in params["hourly"] and "et0_fao_evapotranspiration_previous_day3" in params["hourly"]
 
 
+def test_by_default_it_asks_for_every_lead_time_from_1_to_7():
+    session = FakeSession(FakeResponse(200, make_response(lead_days=tuple(range(1, 8)))))
+    daily = fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), session=session)
+    hourly = session.calls[0][1]["hourly"]
+    assert all(f"precipitation_previous_day{lead}" in hourly for lead in range(1, 8))
+    assert sorted(set(daily["lead_days"])) == [1, 2, 3, 4, 5, 6, 7]
+
+
 def test_rate_limit_has_its_own_error_with_the_reason():
     session = FakeSession(FakeResponse(429, {"reason": "Hourly API request limit exceeded"}))
     with pytest.raises(RateLimitedError, match="Hourly API request limit exceeded"):
@@ -123,7 +131,7 @@ def test_a_slow_answer_is_retried_and_then_succeeds(monkeypatch):
             return good
 
     session = SlowOnce()
-    daily = fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), session=session)
+    daily = fetch_previous_runs(41.56, 0.31, date(2026, 1, 1), date(2026, 1, 2), lead_days=(1,), session=session)
     assert len(session.calls) == 2 and len(daily) == 2
 
 

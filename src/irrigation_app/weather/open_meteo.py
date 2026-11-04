@@ -19,6 +19,15 @@ ATTEMPTS = 3
 RETRY_WAIT_SECONDS = 5
 HOURS_PER_DAY = 24
 
+# Antelación de la previsión (`lead_days`): `N` es «la previsión que se hizo N días antes del día
+# previsto». El modelo predice la humedad de los días 1 a 7, y en producción, para el día de hoy
+# más N, solo existe la previsión de hoy, hecha con N días de antelación, que es menos exacta que
+# la de la víspera. Si se entrenara con la de 1 día (la más exacta), el modelo se fiaría de una
+# calidad que no tendrá al usarlo y fallaría. Por eso se entrena, para cada horizonte N, con la
+# previsión de N días de antelación, y se piden todas.
+FORECAST_HORIZON_DAYS = 7
+ALL_LEAD_DAYS = tuple(range(1, FORECAST_HORIZON_DAYS + 1))
+
 # Nombre propio -> (variable de Open-Meteo, cómo se resume un día).
 DAILY_VARIABLES = {
     "precipitation_mm": ("precipitation", "sum"),
@@ -96,10 +105,12 @@ def fetch_previous_runs(
     longitude: float,
     start: date,
     end: date,
-    lead_days: tuple[int, ...] = (1,),
+    lead_days: tuple[int, ...] = ALL_LEAD_DAYS,
     session=None,
 ) -> pd.DataFrame:
     """Previsiones diarias de una ubicación entre dos fechas (inclusive), con `lead_days` días de antelación.
+
+    Por defecto, todas las antelaciones de 1 a 7 (ver `ALL_LEAD_DAYS`).
 
     Una fila por día y antelación, con las variables de `DAILY_VARIABLES`. `session` permite
     sustituir `requests` en las pruebas.
