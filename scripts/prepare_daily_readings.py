@@ -3,8 +3,8 @@
 Uso (desde la raíz del proyecto, después de prepare_agrodevices_readings.py):
     .venv/Scripts/python scripts/prepare_daily_readings.py
 
-Lee data/agrodevices/readings.parquet y units.parquet, añade el índice de humedad relativa
-(0 a 100 según el rango de cada sonda) y escribe data/agrodevices/daily.parquet
+Lee data/silver/readings.parquet y units.parquet, añade el índice de humedad relativa
+(0 a 100 según el rango de cada sonda) y escribe data/silver/daily.parquet
 (data/ no se sube a git).
 """
 
@@ -18,16 +18,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from irrigation_app.aggregation import aggregate_daily  # noqa: E402
+from irrigation_app.data_layers import DAILY_PATH, READINGS_PATH, UNITS_PATH  # noqa: E402
 from irrigation_app.scale import add_relative_moisture  # noqa: E402
-
-DATA_DIR = PROJECT_ROOT / "data" / "agrodevices"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--readings", type=Path, default=DATA_DIR / "readings.parquet")
-    parser.add_argument("--units", type=Path, default=DATA_DIR / "units.parquet")
-    parser.add_argument("--output", type=Path, default=DATA_DIR / "daily.parquet")
+    parser.add_argument("--readings", type=Path, default=READINGS_PATH)
+    parser.add_argument("--units", type=Path, default=UNITS_PATH)
+    parser.add_argument("--output", type=Path, default=DAILY_PATH)
     args = parser.parse_args()
 
     for path in (args.readings, args.units):

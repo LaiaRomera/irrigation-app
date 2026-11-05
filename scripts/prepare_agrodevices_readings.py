@@ -3,8 +3,8 @@
 Uso (desde la raíz del proyecto, después de prepare_agrodevices_units.py):
     .venv/Scripts/python scripts/prepare_agrodevices_readings.py LECTURAS.csv
 
-Lee las unidades de data/agrodevices/units.parquet. La salida va a
-data/agrodevices/readings.parquet (data/ no se sube a git) y el script imprime
+Lee las unidades de data/silver/units.parquet. La salida va a
+data/silver/readings.parquet (data/ no se sube a git) y el script imprime
 cuántas filas y valores se descartan.
 """
 
@@ -17,16 +17,15 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from irrigation_app.data_layers import READINGS_PATH, UNITS_PATH  # noqa: E402
 from irrigation_app.sources.agrodevices import read_readings  # noqa: E402
-
-DATA_DIR = PROJECT_ROOT / "data" / "agrodevices"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("readings", type=Path)
-    parser.add_argument("--units", type=Path, default=DATA_DIR / "units.parquet")
-    parser.add_argument("--output", type=Path, default=DATA_DIR / "readings.parquet")
+    parser.add_argument("--units", type=Path, default=UNITS_PATH)
+    parser.add_argument("--output", type=Path, default=READINGS_PATH)
     args = parser.parse_args()
 
     for path in (args.readings, args.units):

@@ -14,14 +14,18 @@ La parcela de referencia SHALL quedar confirmada solo cuando se conozcan su cult
 - **THEN** la parcela no se marca como confirmada y se puede sustituir por otra candidata (5271 o 1172) sin cambiar el resto del sistema
 
 ### Requirement: Parámetros mínimos de la parcela
-La parcela de referencia SHALL tener textura del suelo, cultivo, tipo de riego y fecha de inicio del ciclo. La superficie SHALL ser opcional. Cada parámetro SHALL indicar su origen (dato del agricultor, de Agrodevices o supuesto declarado).
+La parcela de referencia SHALL tener obligatoriamente la textura del suelo y el cultivo. El tipo de riego, la fecha de inicio del ciclo y la superficie SHALL ser opcionales. Cada parámetro SHALL indicar su origen (dato del agricultor, de Agrodevices o supuesto declarado).
 
 #### Scenario: Parcela completa
 - **WHEN** se cargan la textura, el cultivo, el tipo de riego y la fecha de inicio del ciclo
-- **THEN** la parcela queda lista para que el motor calcule la dosis
+- **THEN** la parcela queda lista para que el motor calcule la dosis sin supuestos
 
-#### Scenario: Falta un parámetro
-- **WHEN** falta la textura, el cultivo o el tipo de riego
+#### Scenario: Faltan el tipo de riego o la fecha de inicio
+- **WHEN** hay textura y cultivo pero falta el tipo de riego, la fecha de inicio del ciclo o ambos
+- **THEN** el motor calcula la dosis con un valor genérico declarado como supuesto (eficiencia genérica del riego, etapa del cultivo estimada), lo marca con una limitación (`assumed_irrigation_efficiency`, `assumed_crop_stage`) y el informe lo dice; el valor concreto de cada supuesto lo fija AgronomoFAO56 con su fuente y queda anotado en `decisiones.md`
+
+#### Scenario: Falta la textura o el cultivo
+- **WHEN** falta la textura o el cultivo
 - **THEN** el motor no calcula dosis para esa parcela y la recomendación es cualitativa, con el motivo
 
 ### Requirement: Valores agronómicos derivados

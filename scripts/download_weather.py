@@ -25,15 +25,15 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from irrigation_app.weather.locations import locations_from_units  # noqa: E402
 from irrigation_app.weather.open_meteo import RateLimitedError, WeatherError, fetch_previous_runs  # noqa: E402
 
-AGRODEVICES_DIR = PROJECT_ROOT / "data" / "agrodevices"
+from irrigation_app.data_layers import DAILY_PATH, UNITS_PATH  # noqa: E402
 WEATHER_DIR = PROJECT_ROOT / "data" / "weather"
 PAUSE_SECONDS = 1.0
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--units", type=Path, default=AGRODEVICES_DIR / "units.parquet")
-    parser.add_argument("--daily", type=Path, default=AGRODEVICES_DIR / "daily.parquet")
+    parser.add_argument("--units", type=Path, default=UNITS_PATH)
+    parser.add_argument("--daily", type=Path, default=DAILY_PATH)
     parser.add_argument("--output-dir", type=Path, default=WEATHER_DIR)
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS, help="segundos entre peticiones")
     args = parser.parse_args()

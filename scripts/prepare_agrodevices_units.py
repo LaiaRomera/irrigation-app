@@ -4,7 +4,7 @@ Uso (desde la raíz del proyecto):
     .venv/Scripts/python scripts/prepare_agrodevices_units.py PLAYER_DATA.csv PROFILER_SETUP.csv [LECTURAS.csv]
 
 Si se indica el CSV de lecturas, solo se conservan las unidades que aparecen en él.
-La salida va a data/agrodevices/units.parquet (data/ no se sube a git) y el script imprime
+La salida va a data/silver/units.parquet (data/ no se sube a git) y el script imprime
 cuántas unidades quita cada filtro.
 """
 
@@ -15,6 +15,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from irrigation_app.data_layers import UNITS_PATH  # noqa: E402
 from irrigation_app.sources.agrodevices import (  # noqa: E402
     build_units,
     read_devices,
@@ -22,7 +23,7 @@ from irrigation_app.sources.agrodevices import (  # noqa: E402
     read_reading_unit_ids,
 )
 
-DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "agrodevices" / "units.parquet"
+DEFAULT_OUTPUT = UNITS_PATH
 MAX_IDS_SHOWN = 15
 
 
