@@ -1,6 +1,7 @@
 """Construye la tabla de entrenamiento del modelo de humedad (sin meteorología todavía).
 
-Quita los días de instalación de las sondas (como origen y como objetivo). La exclusión por riego
+Quita los días de instalación de las sondas (como origen y como objetivo). Son la unión de la
+regla automática, la lista manual y los días con lecturas SMMAdmin (de data/silver/daily.parquet). La exclusión por riego
 marcado está lista en training_table.py pero aún no se aplica aquí: necesita la lluvia prevista
 (fase 1) para no confundir lluvia con riego.
 
@@ -22,8 +23,8 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from irrigation_app.data_layers import READINGS_PATH, SNAPSHOTS_PATH, TRAINING_TABLE_PATH, UNITS_PATH  # noqa: E402
-from irrigation_app.irrigation_marks import installation_days  # noqa: E402
+from irrigation_app.data_layers import DAILY_PATH, READINGS_PATH, SNAPSHOTS_PATH, TRAINING_TABLE_PATH, UNITS_PATH  # noqa: E402
+from irrigation_app.irrigation_marks import admin_days, installation_days  # noqa: E402
 from irrigation_app.training_table import build_training_table_with_counts, dawn_snapshots  # noqa: E402
 
 
@@ -31,20 +32,24 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--readings", type=Path, default=READINGS_PATH)
     parser.add_argument("--units", type=Path, default=UNITS_PATH)
+    parser.add_argument("--daily", type=Path, default=DAILY_PATH, help="datos diarios (para los días con SMMAdmin)")
     parser.add_argument("--output-dir", type=Path, default=None, help="si se indica, snapshots y tabla van a esta carpeta")
     args = parser.parse_args()
 
-    for path in (args.readings, args.units):
+    for path in (args.readings, args.units, args.daily):
         if not path.exists():
             sys.exit(f"No existe el archivo {path}")
 
     snapshots = dawn_snapshots(pd.read_parquet(args.readings), pd.read_parquet(args.units))
-    installation = installation_days(snapshots)
+    admin = admin_days(pd.read_parquet(args.daily, columns=["unit_id", "day", "n_admin"]))
+    installation = installation_days(snapshots, admin=admin)
+    automatic_and_manual = installation_days(snapshots)
     table, counts = build_training_table_with_counts(snapshots, installation=installation)
 
     print(f"{len(snapshots):,} valores de las 05:00 UTC -> {len(table):,} ejemplos de entrenamiento")
     print(
-        f"Días de instalación excluidos: {len(installation):,} (de {installation['unit_id'].nunique()} unidades)."
+        f"Días de instalación excluidos: {len(installation):,} (de {installation['unit_id'].nunique()} unidades);"
+        f" sin la regla SMMAdmin serían {len(automatic_and_manual):,} (de {automatic_and_manual['unit_id'].nunique()})."
         " Exclusión por riego: todavía no aplicada (falta la lluvia prevista)."
     )
     print("\nEjemplos por horizonte (change_*_nulled: campos que pasan a nulo por apoyarse en un día de instalación):")

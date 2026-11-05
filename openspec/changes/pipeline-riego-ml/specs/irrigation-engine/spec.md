@@ -18,10 +18,10 @@ El motor SHALL ser una función pura: con las mismas entradas devuelve el mismo 
 - **THEN** el motor rechaza la entrada con un error que nombra el campo
 
 ### Requirement: Humedad de la zona radicular
-El motor SHALL combinar, para cada día, la humedad predicha de las sondas cuya profundidad cae dentro de la zona radicular del cultivo, y pasarla a fracción de agua útil gastada: `(anclaje superior − humedad) / (anclaje superior − anclaje inferior)`.
+El motor SHALL combinar, para cada día, la humedad predicha de las sondas incluidas en la media de la parcela (las marcadas como tales en la unidad; en la 1168, 15, 25 y 35 cm) y pasarla a fracción de agua útil gastada con los anclajes globales: `(anclaje superior − humedad) / (anclaje superior − anclaje inferior)`. La profundidad radicular del cultivo SHALL usarse para el agua útil en mm (TAW), no para elegir las sondas.
 
-#### Scenario: Sonda fuera de la zona radicular
-- **WHEN** la profundidad radicular es de 40 cm y hay sondas a 15, 25, 35 y 55 cm
+#### Scenario: Sonda fuera de la media
+- **WHEN** hay sondas a 15, 25, 35 y 55 cm y la unidad solo incluye 15, 25 y 35 cm en su media
 - **THEN** la sonda de 55 cm no interviene en el cálculo
 
 #### Scenario: Falla una sonda

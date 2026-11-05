@@ -67,14 +67,14 @@ Está en `data/gold/`. Hoy contiene la tabla de entrenamiento.
 
 | Archivo | Una fila es… | Filas | Columnas principales | Fechas | Tamaño |
 |---|---|---|---|---|---|
-| `training_table.parquet` | una sonda-profundidad, un día de origen y un horizonte (1 a 7 días) | 648.148 | `unit_id`, `depth_cm`, `origin_day`, `horizon_days`, `base_index`, `change_1d`, `change_3d`, `doy_sin`, `doy_cos`, `target_index`, `target_change` | origen: 1-6-2024 a 1-11-2026 | 7,2 MB |
+| `training_table.parquet` | una sonda-profundidad, un día de origen y un horizonte (1 a 7 días) | 642.240 | `unit_id`, `depth_cm`, `origin_day`, `horizon_days`, `base_index`, `change_1d`, `change_3d`, `doy_sin`, `doy_cos`, `target_index`, `target_change` | origen: 1-6-2024 a 1-11-2026 | 7,2 MB |
 
-Cubre **123 unidades** y 488 pares unidad-profundidad. Las 5 unidades de plata que no llegan al oro (1157, 5256, 5270, 5502 y 5519) tienen entre 1 y 11 días con datos, y casi todos son días de instalación. Ejemplos por horizonte, de 1 a 7 días: 95.264, 94.271, 93.380, 92.481, 91.666, 90.922 y 90.164.
+Cubre **123 unidades** y 488 pares unidad-profundidad. Las 5 unidades de plata que no llegan al oro (1157, 5256, 5270, 5502 y 5519) tienen entre 1 y 11 días con datos, y casi todos son días de instalación. Ejemplos por horizonte, de 1 a 7 días: 94.399, 93.408, 92.521, 91.630, 90.835, 90.103 y 89.344.
 
 **Reglas de calidad aplicadas:**
 
-- **Días de instalación fuera.** Una sonda recién puesta da valores de 0 a 15 hasta que se entierra, y esos valores no son sequedad. Se excluyen como día de origen y como día objetivo (732 días en 97 unidades, según la regla de `irrigation_marks.py` más la lista manual de las unidades 5337 y 5515). Es lo que baja la tabla de 663.483 a 648.148 ejemplos.
-- **El modelo predice el cambio de humedad** (`target_change`, la diferencia del índice entre el origen y el día objetivo), no el valor absoluto. La persistencia, que es «no cambia nada», es la vara de medir: su error medio es 0,94 puntos a 1 día y 2,40 a 7 días.
+- **Días de instalación fuera.** Una sonda recién puesta da valores de 0 a 15 hasta que se entierra, y esos valores no son sequedad. Se excluyen como día de origen y como día objetivo (996 días en 105 unidades). Es la unión de tres reglas de `irrigation_marks.py`: la automática (índice por debajo de 20 al empezar, tope de 30 días), la lista manual de las unidades 5337 y 5515, y los días con alguna lectura `SMMAdmin` (463 días en 74 unidades; el día es el día UTC de las fotos de las 05:00). Es lo que baja la tabla de 663.483 a 642.240 ejemplos.
+- **El modelo predice el cambio de humedad** (`target_change`, la diferencia del índice entre el origen y el día objetivo), no el valor absoluto. La persistencia, que es «no cambia nada», es la vara de medir: su error medio es 0,94 puntos a 1 día y 2,39 a 7 días.
 - **Los cambios apoyados en un día de instalación pasan a nulo** (`change_1d`, `change_3d`) sin quitar el ejemplo.
 - **Todavía sin exclusión por riego marcado**: necesita la lluvia prevista para no confundir lluvia con riego (pendiente).
 

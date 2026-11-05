@@ -10,6 +10,10 @@ entrenamiento es cosa de `training_table.py`.
   está por debajo de un umbral, antes de llegar por primera vez a un valor plausible. En ese
   tramo la sonda aún no está enterrada y el valor bajo no es sequedad real. Una unidad que
   empieza con valores plausibles no tiene instalación, aunque luego se seque.
+- **Días con lecturas SMMAdmin** (`admin_days`): Agrodevices oculta al cliente los primeros datos
+  de una sonda recién instalada con un tipo de lectura que solo ve un administrador (`SMMAdmin`).
+  Un día de unidad con alguna de esas lecturas cuenta también como día de instalación (decidido
+  por Laia el 5 de noviembre de 2026). Se une a la regla automática y a la lista manual.
 """
 
 from __future__ import annotations
@@ -134,17 +138,32 @@ def installation_summary(
     return pd.DataFrame(rows, columns=SUMMARY_COLUMNS)
 
 
+def admin_days(daily: pd.DataFrame) -> pd.DataFrame:
+    """Pares (`unit_id`, `day`) con alguna lectura SMMAdmin, a partir de los datos diarios.
+
+    `daily` es `data/silver/daily.parquet` (`unit_id`, `day`, `n_admin`, una fila por profundidad).
+    El día es el día UTC, el mismo con que se construyen las fotos de las 05:00. Basta una lectura
+    SMMAdmin en cualquier profundidad y a cualquier hora del día (aunque sea parcial) para marcarlo.
+    """
+    marked = daily.loc[daily["n_admin"] > 0, ["unit_id", "day"]].drop_duplicates()
+    return marked.sort_values(["unit_id", "day"]).reset_index(drop=True)
+
+
 def installation_days(
     snapshots: pd.DataFrame,
     threshold: float = INSTALL_THRESHOLD,
     max_days: int = INSTALL_MAX_DAYS,
     depth_agg: str = "any",
     manual: Mapping[int, Sequence[tuple[str, str]]] | None = None,
+    admin: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Los días de instalación como pares (`unit_id`, `day`): regla automática más lista manual.
+    """Los días de instalación como pares (`unit_id`, `day`): la unión de tres reglas.
 
-    Son días de calendario (incluye días del tramo sin foto). `manual` por defecto es
-    `MANUAL_INSTALLATION` y solo cuenta para las unidades que aparecen en `snapshots`. Las fechas manuales se interpretan en la misma zona horaria que `day`.
+    Regla automática (umbral y tope), lista manual y días con lecturas SMMAdmin (`admin`, salida
+    de `admin_days`; si es None no se usa). Son días de calendario (incluye días del tramo sin
+    foto). `manual` por defecto es `MANUAL_INSTALLATION`. `manual` y `admin` solo cuentan para
+    las unidades que aparecen en `snapshots`. Las fechas manuales se interpretan en la misma zona
+    horaria que `day`.
     """
     manual = MANUAL_INSTALLATION if manual is None else manual
     ranges: list[tuple[int, pd.Timestamp, pd.Timestamp]] = [
@@ -164,6 +183,11 @@ def installation_days(
         for unit_id, start, end in ranges
         for day in pd.date_range(start, end, freq="D")
     }
+    if admin is not None and not admin.empty:
+        admin_in = admin.loc[admin["unit_id"].isin(present), ["unit_id", "day"]]
+        # Mismo tipo de fecha que las fotos (la resolución de datetime64 puede variar)
+        admin_day = admin_in["day"].astype(snapshots["day"].dtype)
+        pairs |= set(zip(admin_in["unit_id"].astype("int64"), admin_day))
     result = pd.DataFrame(sorted(pairs), columns=["unit_id", "day"])
     if result.empty:
         result = pd.DataFrame({"unit_id": pd.Series(dtype="int64"), "day": pd.Series(dtype=snapshots["day"].dtype)})

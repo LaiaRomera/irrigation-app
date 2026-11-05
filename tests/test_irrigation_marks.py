@@ -3,6 +3,7 @@
 import pandas as pd
 
 from irrigation_app.irrigation_marks import (
+    admin_days,
     installation_days,
     installation_mask,
     installation_summary,
@@ -184,3 +185,66 @@ def test_the_real_manual_list_marks_units_5337_and_5515_until_the_probe_is_burie
         assert day(first_good) not in set(marked)
     assert (days[days["unit_id"] == 5337]["day"] >= day("2026-04-22")).all()
     assert len(days[days["unit_id"] == 5337]) == 67 and len(days[days["unit_id"] == 5515]) == 67
+
+
+# ---------- Días con lecturas SMMAdmin ----------
+
+def make_daily(rows):
+    """`rows`: (unit, 'AAAA-MM-DD', profundidad, n_admin) -> el formato de daily.parquet que usa admin_days."""
+    return pd.DataFrame(
+        [(u, pd.Timestamp(d, tz="UTC"), depth, n) for u, d, depth, n in rows],
+        columns=["unit_id", "day", "depth_cm", "n_admin"],
+    )
+
+
+def test_admin_days_marks_a_day_with_partial_admin_readings_in_any_depth():
+    daily = make_daily(
+        [
+            (1, "2026-01-01", 15, 96),  # día completo
+            (1, "2026-01-01", 55, 96),
+            (1, "2026-01-02", 15, 0),  # solo una profundidad y unas pocas lecturas: cuenta
+            (1, "2026-01-02", 55, 3),
+            (1, "2026-01-03", 15, 0),  # sin SMMAdmin: no cuenta
+            (1, "2026-01-03", 55, 0),
+        ]
+    )
+    result = admin_days(daily)
+    assert result["day"].tolist() == [day("2026-01-01"), day("2026-01-02")]
+    assert set(result["unit_id"]) == {1}
+
+
+def test_installation_is_the_union_of_automatic_manual_and_admin_rules():
+    # Unidad 1: automática (día 1, valor 5). Unidad 2: manual (día 5). Unidad 3: solo SMMAdmin (días 2 y 3).
+    snapshots = make_snapshots(
+        {(1, 10): [5.0] + [80.0] * 5, (2, 10): [70.0] * 6, (3, 10): [70.0] * 6}
+    )
+    daily = make_daily([(3, "2026-01-02", 10, 4), (3, "2026-01-03", 10, 96)])
+    days = installation_days(snapshots, manual={2: [("2026-01-05", "2026-01-05")]}, admin=admin_days(daily))
+    assert set(zip(days["unit_id"], days["day"])) == {
+        (1, day("2026-01-01")), (2, day("2026-01-05")), (3, day("2026-01-02")), (3, day("2026-01-03"))
+    }
+
+
+def test_admin_days_overlapping_other_rules_are_not_counted_twice():
+    snapshots = make_snapshots({(1, 10): [5.0, 5.0, 80.0, 80.0]})  # automática: días 1 y 2
+    daily = make_daily([(1, "2026-01-02", 10, 10), (1, "2026-01-03", 10, 10)])  # SMMAdmin: días 2 y 3
+    days = installation_days(snapshots, admin=admin_days(daily))
+    assert days["day"].tolist() == [day("2026-01-01"), day("2026-01-02"), day("2026-01-03")]
+
+
+def test_a_unit_without_admin_readings_and_unknown_units_change_nothing():
+    snapshots = make_snapshots({(1, 10): [70.0] * 4})
+    no_admin = make_daily([(1, "2026-01-01", 10, 0), (1, "2026-01-02", 10, 0)])
+    assert installation_days(snapshots, admin=admin_days(no_admin)).empty
+    other_unit = make_daily([(99, "2026-01-01", 10, 5)])  # una unidad que no está en las fotos
+    assert installation_days(snapshots, admin=admin_days(other_unit)).empty
+    assert installation_days(snapshots, admin=None).empty
+
+
+def test_admin_dates_with_another_time_resolution_still_match_the_snapshots():
+    snapshots = make_snapshots({(1, 10): [70.0] * 4})
+    daily = make_daily([(1, "2026-01-02", 10, 1)])
+    daily["day"] = daily["day"].astype("datetime64[us, UTC]")
+    snapshots["day"] = snapshots["day"].astype("datetime64[ns, UTC]")
+    days = installation_days(snapshots, admin=admin_days(daily))
+    assert installation_mask(snapshots, days).tolist() == [False, True, False, False]

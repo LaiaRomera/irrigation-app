@@ -36,14 +36,18 @@ A partir de la textura y del cultivo, el sistema SHALL obtener la capacidad de c
 - **THEN** cada valor derivado tiene su cifra y la referencia de la tabla de la que sale
 
 ### Requirement: Anclajes de la escala del sensor
-Para cada profundidad de la parcela, el sistema SHALL calcular un anclaje superior (suelo lleno: meseta del índice tras lluvia o riego fuerte) y uno inferior (mínimo recurrente en periodos secos o, si no lo hay, una conversión genérica declarada). Cada anclaje SHALL registrar su método y el periodo de datos usado.
+Los anclajes SHALL ser **globales**, no uno por profundidad: un anclaje superior (suelo lleno) y uno inferior (punto de marchitez) para la media de las profundidades de la zona radicular, que son las marcadas como incluidas en la media de la unidad (en la 1168, 15, 25 y 35 cm). La fuente preferente SHALL ser la configuración de Agrodevices, convertida al índice de 0 a 100 con el rango de la unidad. Cada anclaje SHALL registrar su fuente, su método y, si salió de los datos, el periodo usado.
+
+#### Scenario: Anclajes de Agrodevices
+- **WHEN** la unidad tiene configuradas las líneas de Agrodevices
+- **THEN** el anclaje superior es la línea de saturación y el inferior el punto de marchitez, convertidos al índice; se contrastan con los percentiles de la media de las profundidades y se registra la fuente `agrodevices`
 
 #### Scenario: Anclaje con datos
-- **WHEN** la sonda tiene secados y recargas en su histórico
-- **THEN** los anclajes salen de sus percentiles y se registra el periodo y el método
+- **WHEN** la unidad no tiene líneas de Agrodevices pero sí secados y recargas en su histórico
+- **THEN** los anclajes salen de los percentiles de la media de las profundidades (suelo lleno: meseta del índice tras lluvia o riego fuerte; límite inferior: mínimo recurrente en periodos secos) y se registra el periodo y el método
 
 #### Scenario: Sin periodo seco
-- **WHEN** la sonda no tiene ningún periodo seco suficiente
+- **WHEN** no hay líneas de Agrodevices y la unidad no tiene ningún periodo seco suficiente
 - **THEN** el anclaje inferior usa la conversión genérica y la parcela lleva la limitación `generic_lower_anchor`
 
 ### Requirement: Parcela en la base de datos

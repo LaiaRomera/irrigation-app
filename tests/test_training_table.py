@@ -197,3 +197,20 @@ def test_season_columns_follow_the_origin_day_and_the_old_columns_are_kept():
     assert first["doy_sin"] == pytest.approx(np.sin(2 * np.pi * 365 / 365.25))
     for column in ("depth_cm", "base_index", "change_1d", "change_3d", "doy_sin", "doy_cos"):
         assert column in table.columns
+
+
+def test_admin_days_exclude_as_origin_and_target_and_null_the_lags():
+    from irrigation_app.irrigation_marks import admin_days, installation_days
+
+    snapshots = make_snapshots([60.0, 62.0, 61.0, 63.0, 64.0, 65.0])
+    daily = pd.DataFrame(
+        {"unit_id": [1], "day": [pd.Timestamp("2026-01-03", tz="UTC")], "depth_cm": [10], "n_admin": [2]}
+    )
+    marked = installation_days(snapshots, admin=admin_days(daily))
+    table, counts = build_training_table_with_counts(snapshots, horizons=(1,), installation=marked)
+    assert 3 not in table["origin_day"].dt.day.tolist()  # no es origen
+    assert 2 not in table["origin_day"].dt.day.tolist()  # ni objetivo (origen 2 -> objetivo 3)
+    after = table[table["origin_day"] == pd.Timestamp("2026-01-04", tz="UTC")].iloc[0]
+    assert pd.isna(after["change_1d"])  # su día de referencia (el 3) tiene SMMAdmin
+    assert not pd.isna(after["change_3d"])  # la referencia a 3 días (el 1) es normal
+    assert counts.loc[1, "change_1d_nulled"] == 1
