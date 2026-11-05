@@ -2,7 +2,7 @@
 
 ## Why
 
-Ya están listos el esquema de la base de datos, la limpieza de Agrodevices (128 unidades, 9,5 M de lecturas, índice de humedad común de 0 a 100), el conector de Open-Meteo y una primera tabla de entrenamiento (642.240 ejemplos tras quitar los días de instalación de las sondas). Pero todavía no hay ningún resultado de punta a punta: falta la meteorología en la tabla, los riegos siguen dentro de lo que se predice y no existen ni el modelo, ni el motor, ni el informe, ni la web. Quedan unas 6 semanas de TFM y el entregable del MVP es una recomendación de riego en PDF, con gráficas y explicaciones en lenguaje natural. Este cambio cubre todo el camino que falta: de los datos limpios a ese PDF.
+Ya están listos el esquema de la base de datos, la limpieza de Agrodevices (128 unidades, 9,5 M de lecturas, índice de humedad común de 0 a 100), el conector de Open-Meteo y una primera tabla de entrenamiento (587.032 ejemplos tras quitar los días de instalación de las sondas y los riegos marcados). Pero todavía no hay ningún resultado de punta a punta: falta la meteorología en la tabla, los riegos siguen dentro de lo que se predice y no existen ni el modelo, ni el motor, ni el informe, ni la web. Quedan unas 6 semanas de TFM y el entregable del MVP es una recomendación de riego en PDF, con gráficas y explicaciones en lenguaje natural. Este cambio cubre todo el camino que falta: de los datos limpios a ese PDF.
 
 ## What Changes
 

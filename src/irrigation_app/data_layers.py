@@ -1,9 +1,11 @@
 """Rutas de las capas de datos (arquitectura medallón) del proyecto.
 
-- Bronce: los exports originales de Agrodevices. Son confidenciales y viven fuera del repositorio
-  (no se copian a `data/`); solo se documentan con un manifiesto en `data/bronze/manifest.json`.
-- Plata: datos limpios y tipados (`units`, `readings`, `daily`, `snapshots`).
-- Oro: lo que consumen el modelo y la app (`training_table`).
+- Bronce: los exports originales de Agrodevices (confidenciales, fuera del repositorio; solo se
+  documentan con un manifiesto en `data/bronze/manifest.json`) y la meteorología tal como la
+  devuelve Open-Meteo, un archivo por ubicación (`data/bronze/weather/previous_runs/`).
+- Plata: datos limpios y tipados (`units`, `readings`, `daily`, `snapshots`) y la meteorología
+  reunida (`weather_previous_runs`, `weather_locations`, `weather_unit_locations`).
+- Oro: lo que consumen el modelo y la app (`training_table`, con la meteorología unida).
 
 Todos los scripts usan estas constantes en lugar de escribir las rutas a mano. `data/` no se sube a git.
 """
@@ -24,6 +26,9 @@ GOLD_DIR = DATA_DIR / "gold"
 # variable de entorno o con el argumento --bronze-dir de describe_data_layers.py.
 BRONZE_EXPORTS_ENV = "AGRODEVICES_EXPORTS_DIR"
 
+# Meteorología descargada tal cual, un Parquet por ubicación (`<location_id>.parquet`).
+BRONZE_WEATHER_DIR = BRONZE_DIR / "weather" / "previous_runs"
+
 BRONZE_MANIFEST_PATH = BRONZE_DIR / "manifest.json"
 SILVER_MANIFEST_PATH = SILVER_DIR / "manifest.json"
 GOLD_MANIFEST_PATH = GOLD_DIR / "manifest.json"
@@ -33,10 +38,19 @@ READINGS_PATH = SILVER_DIR / "readings.parquet"
 DAILY_PATH = SILVER_DIR / "daily.parquet"
 SNAPSHOTS_PATH = SILVER_DIR / "snapshots.parquet"
 SAMPLE_UNIT_1130_PATH = SILVER_DIR / "muestra_unidad_1130.csv"
+# Meteorología reunida: las previsiones de todas las ubicaciones, las ubicaciones y la unidad -> ubicación.
+WEATHER_PREVIOUS_RUNS_PATH = SILVER_DIR / "weather_previous_runs.parquet"
+WEATHER_LOCATIONS_PATH = SILVER_DIR / "weather_locations.parquet"
+WEATHER_UNIT_LOCATIONS_PATH = SILVER_DIR / "weather_unit_locations.parquet"
 
 TRAINING_TABLE_PATH = GOLD_DIR / "training_table.parquet"
+# Parámetros con los que se marcó el riego al generar la tabla (junto a ella).
+TRAINING_PARAMS_PATH = GOLD_DIR / "training_table_params.json"
 
-SILVER_FILES = (UNITS_PATH, READINGS_PATH, DAILY_PATH, SNAPSHOTS_PATH, SAMPLE_UNIT_1130_PATH)
+SILVER_FILES = (
+    UNITS_PATH, READINGS_PATH, DAILY_PATH, SNAPSHOTS_PATH, SAMPLE_UNIT_1130_PATH,
+    WEATHER_PREVIOUS_RUNS_PATH, WEATHER_LOCATIONS_PATH, WEATHER_UNIT_LOCATIONS_PATH,
+)
 GOLD_FILES = (TRAINING_TABLE_PATH,)
 
 

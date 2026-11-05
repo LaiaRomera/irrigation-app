@@ -16,6 +16,7 @@ un valor.
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 from typing import Literal
 
@@ -264,6 +265,59 @@ def stage_at(crop_name: str, day_of_cycle: int) -> str | None:
     return None
 
 
+# --- Calendario del ciclo y Kc por día (Tablas 11 y 12, capítulo 6) -----------------------------
+# Inicio del ciclo cuando la parcela no lo dice (limitación `assumed_crop_stage`): 1 de marzo (mes, día). La Tabla 11
+# da la fila «Deciduous Orchard» (20/70/90/30 días) para plantación en marzo en latitudes altas; el día 1 es una
+# elección propia dentro de ese mes, aprobada por Laia el 5 de noviembre de 2026. El ciclo dura 210 días: del 1 de marzo al
+# 26 de septiembre; fuera de él (hoja caída o reposo) la Tabla 12 no da Kc.
+ASSUMED_CYCLE_START = (3, 1)
+ASSUMED_CYCLE_START_SOURCE = (
+    "FAO-56, capítulo 6, Tabla 11, «Deciduous Orchard» (plantación en marzo, latitudes altas); el día 1 de marzo "
+    "es un supuesto declarado"
+)
+
+
+def cycle_start_in_year(month: int, day: int, year: int) -> dt.date:
+    """Inicio del ciclo en un año dado (el 29 de febrero pasa al 28 en los años no bisiestos)."""
+    try:
+        return dt.date(year, month, day)
+    except ValueError:
+        return dt.date(year, month, day - 1)
+
+
+def day_of_cycle(date: dt.date, start: tuple[int, int] = ASSUMED_CYCLE_START) -> int:
+    """Día del ciclo (0 = inicio) de una fecha, con el inicio del mismo año. Negativo antes del inicio."""
+    return (date - cycle_start_in_year(start[0], start[1], date.year)).days
+
+
+def kc_at(crop_name: str, case: str, day_in_cycle: int) -> tuple[str, float] | None:
+    """(etapa, Kc) del día de ciclo con la curva de FAO-56: Kc ini constante, lineal hasta Kc mid al final de
+    desarrollo, Kc mid constante y lineal hasta Kc fin al final de la etapa tardía (capítulo 6, Figura 25).
+
+    Devuelve None fuera del ciclo (la Tabla 12 no da Kc en reposo)."""
+    stage = stage_at(crop_name, day_in_cycle)
+    if stage is None:
+        return None
+    kc_ini, kc_mid, kc_end = kc_values(crop_name, case)
+    stages = crop(crop_name).stage_days
+    start_of = {}
+    elapsed = 0
+    for st in stages:
+        start_of[st.name] = (elapsed, st.days)
+        elapsed += st.days
+    first, length = start_of[stage]
+    progress = (day_in_cycle - first + 1) / length  # 0 a 1, al final del día
+    if stage == "ini":
+        kc = kc_ini
+    elif stage == "dev":
+        kc = kc_ini + (kc_mid - kc_ini) * progress
+    elif stage == "mid":
+        kc = kc_mid
+    else:
+        kc = kc_mid + (kc_end - kc_mid) * progress
+    return stage, round(kc, 3)
+
+
 # --- Riego localizado: Tabla 20 y ejemplo 34 (capítulo 7) --------------------------------------
 WETTED_FRACTION_TRICKLE = Reference(
     0.35, "fracción", "FAO-56, capítulo 7, Tabla 20, fila «Trickle irrigation»: fw 0,3 a 0,4",
@@ -288,6 +342,33 @@ def drip_exposed_wetted_fraction(fc: float, fw: float | None = None) -> Referenc
         "FAO-56, capítulo 7, Tabla 20 y ejemplo 34: few = fw·[1 − (2/3)fc] para goteo", "assumption",
         f"fw = {base}, fc = {fc}.",
     )
+
+
+
+# --- Dosis del riego localizado: reposición de la ETc del intervalo ---------------------------------
+DRIP_REPLENISHMENT_INTERVAL_DAYS = Reference(
+    3, "días",
+    "Supuesto propio, sin cifra en FAO-56. FAO-56 (capítulo 8, «Irrigation scheduling») indica que el riego de alta "
+    "frecuencia (goteo) repone la ETc de cada intervalo y mantiene el suelo cerca de capacidad de campo; el número de "
+    "días no está tabulado.",
+    "assumption",
+    "Intervalo de reposición del goteo: cada evento devuelve lo que el cultivo gasta en 3 días. Cambiable con "
+    "`EngineInput.replenishment_interval_days`.",
+)
+LOCALIZED_IRRIGATION_TYPES = ("drip_one_line",)
+
+
+def is_localized(irrigation_type: str | None) -> bool:
+    """True si el riego es localizado (hoy, goteo de una línea): moja solo una franja del suelo."""
+    if irrigation_type is None:
+        return False
+    key = _normalize(irrigation_type)
+    return _IRRIGATION_ALIASES.get(key, key) in LOCALIZED_IRRIGATION_TYPES
+
+
+def readily_available_water_mm(p: float, taw_mm: float) -> float:
+    """RAW = p × TAW (FAO-56, ecuación 83): el agua que el cultivo puede gastar sin estrés; es el tope de un evento."""
+    return p * taw_mm
 
 
 # --- Eficiencia de aplicación: no está en FAO-56, sale del manual de gestión del agua de la FAO -

@@ -61,6 +61,11 @@ class Anchors(BaseModel):
     lower: Anchor  # punto de marchitez permanente
     # Otras líneas de Agrodevices, solo informativas: nombre -> índice
     other_lines: dict[str, float] = {}
+    # Máximo de la media de las capas en los datos (sin días de instalación): el suelo lleno real de la sonda.
+    # Informativo; el motor lo usa para avisar si el anclaje superior queda por encima (limitación
+    # `upper_anchor_above_observed_max`).
+    observed_max_index: float | None = None
+    observed_max_note: str = ""
 
     @model_validator(mode="after")
     def _upper_above_lower(self) -> "Anchors":
@@ -170,6 +175,10 @@ REFERENCE_PLOT = ReferencePlot(
             "upper_optimal_recharge": (11700 - 8234) / (11700 - 6900) * 100,
             "upper_hard_to_use_reserve": (11700 - 8570) / (11700 - 6900) * 100,
         },
+        observed_max_index=76.7,
+        observed_max_note="Máximo de la media de 15, 25 y 35 cm del 16-03-2025 al 02-11-2026, sin días de instalación "
+        "(scripts/compute_anchors.py, 5 de noviembre de 2026; p99 = 76,2). El suelo lleno real de la sonda queda cerca de "
+        "76,7 y no en 79,4.",
     ),
     localized_irrigation_note=(
         "El goteo de una línea moja solo una franja del suelo: se aplica el criterio FAO-56 de riego localizado "

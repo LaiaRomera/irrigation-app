@@ -128,3 +128,16 @@ def test_duplicate_weather_rows_are_rejected():
     weather = pd.concat([full_week(), full_week()], ignore_index=True)
     with pytest.raises(ValueError):
         weather_features(make_examples(1), weather, UNIT_LOCATIONS)
+
+
+def test_real_parquet_dtypes_join_like_the_synthetic_ones():
+    # previous_runs.parquet trae `day` en microsegundos con zona UTC, `lead_days` int64 y el
+    # identificador de la ubicación como texto; la tabla de entrenamiento trae el origen en ns.
+    weather = full_week()
+    weather["day"] = weather["day"].astype("datetime64[us, UTC]")
+    weather["lead_days"] = weather["lead_days"].astype("int64")
+    examples = make_examples(3)
+    examples["origin_day"] = examples["origin_day"].astype("datetime64[ns, UTC]")
+    result = add_weather_features(examples, weather, UNIT_LOCATIONS)
+    assert result["precip_sum_mm"].iloc[0] == 60.0
+    assert not result[INCOMPLETE_COLUMN].iloc[0]

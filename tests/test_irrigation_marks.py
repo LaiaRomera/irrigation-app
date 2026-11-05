@@ -7,6 +7,7 @@ from irrigation_app.irrigation_marks import (
     installation_days,
     installation_mask,
     installation_summary,
+    interval_rain,
     possible_irrigation,
 )
 
@@ -248,3 +249,65 @@ def test_admin_dates_with_another_time_resolution_still_match_the_snapshots():
     snapshots["day"] = snapshots["day"].astype("datetime64[ns, UTC]")
     days = installation_days(snapshots, admin=admin_days(daily))
     assert installation_mask(snapshots, days).tolist() == [False, True, False, False]
+
+
+# ---------- Lluvia del intervalo (2.5) ----------
+
+def test_interval_rain_takes_the_max_of_previous_day_and_same_day_at_lead_zero():
+    weather = pd.DataFrame(
+        {
+            "location_id": ["a", "a", "a"],
+            "day": [day("2026-01-01"), day("2026-01-01"), day("2026-01-02")],
+            "lead_days": [0, 3, 0],
+            "precipitation_mm": [4.0, 9.0, 1.0],
+        }
+    )
+    units = pd.DataFrame({"unit_id": [1, 2], "location_id": ["a", "a"]})
+    rain = interval_rain(weather, units).set_index(["unit_id", "day"])["rain_mm"]
+    assert rain[(1, day("2026-01-01"))] == 4.0  # solo se conoce el propio día (d−1 sin dato)
+    assert rain[(1, day("2026-01-02"))] == 4.0  # max(d−1 = 4, d = 1)
+    assert rain[(2, day("2026-01-03"))] == 1.0  # solo se conoce d−1
+    assert len(rain) == 6  # tres días por unidad; la antelación 3 no cuenta
+
+
+def test_rain_on_the_same_day_alone_discards_a_rise():
+    """La lluvia de madrugada del propio día d sube el índice sin ser riego."""
+    snapshots = make_snapshots({(1, 10): [50.0, 50.0, 56.0, 56.0]})
+    weather = pd.DataFrame(
+        {
+            "location_id": ["a", "a"],
+            "day": [day("2026-01-02"), day("2026-01-03")],
+            "lead_days": [0, 0],
+            "precipitation_mm": [0.0, 3.0],  # seco el 2, llueve el 3 (el día de la subida)
+        }
+    )
+    rain = interval_rain(weather, pd.DataFrame({"unit_id": [1], "location_id": ["a"]}))
+    marks = possible_irrigation(snapshots, rain).set_index("day")["possible_irrigation"]
+    assert not marks[day("2026-01-03")]
+    # Con la regla anterior (solo d−1 = 0 mm) se habría marcado como riego
+    assert possible_irrigation(snapshots, rain.assign(rain_mm=0.0)).set_index("day").loc[day("2026-01-03"), "possible_irrigation"]
+
+
+def test_rain_below_the_limit_on_both_days_does_not_discard():
+    snapshots = make_snapshots({(1, 10): [50.0, 50.0, 56.0, 56.0]})
+    weather = pd.DataFrame(
+        {
+            "location_id": ["a", "a"],
+            "day": [day("2026-01-02"), day("2026-01-03")],
+            "lead_days": [0, 0],
+            "precipitation_mm": [1.9, 1.9],
+        }
+    )
+    rain = interval_rain(weather, pd.DataFrame({"unit_id": [1], "location_id": ["a"]}))
+    marks = possible_irrigation(snapshots, rain).set_index("day")["possible_irrigation"]
+    assert marks[day("2026-01-03")]
+
+
+def test_rain_from_real_format_discards_a_rise():
+    snapshots = make_snapshots({(1, 10): [50.0, 50.0, 56.0, 56.0]})
+    weather = pd.DataFrame(
+        {"location_id": ["a"], "day": [day("2026-01-02")], "lead_days": [0], "precipitation_mm": [8.0]}
+    )
+    rain = interval_rain(weather, pd.DataFrame({"unit_id": [1], "location_id": ["a"]}))
+    marks = possible_irrigation(snapshots, rain).set_index("day")["possible_irrigation"]
+    assert not marks[day("2026-01-03")]  # llovió 8 mm el día 2: la subida del 3 se atribuye a la lluvia

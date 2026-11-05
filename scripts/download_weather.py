@@ -6,10 +6,11 @@ Uso (desde la raíz del proyecto, después de prepare_agrodevices_units.py y pre
 Pide, para cada ubicación (unidades a menos de 1 km agrupadas), las antelaciones de 0 a 6 días
 entre el primer y el último día con lecturas de sus unidades (unas 6.500 llamadas de las 10.000
 diarias de la capa gratuita; el límite por hora es de 5.000, así que puede parar y pedir que se
-vuelva a ejecutar más tarde). Cada ubicación se guarda en su propio archivo en
-data/weather/previous_runs/, así que si se corta se puede volver a ejecutar y solo pide las que
-faltan. Al final reúne todo en data/weather/previous_runs.parquet y escribe las tablas
-data/weather/locations.parquet y data/weather/unit_locations.parquet (data/ no se sube a git).
+vuelva a ejecutar más tarde). Cada ubicación se guarda tal cual en su propio archivo de bronce,
+data/bronze/weather/previous_runs/, así que si se corta se puede volver a ejecutar y solo pide las
+que faltan. Al final reúne todo en data/silver/weather_previous_runs.parquet y escribe las tablas
+data/silver/weather_locations.parquet y data/silver/weather_unit_locations.parquet (data/ no se
+sube a git).
 """
 
 import argparse
@@ -22,11 +23,17 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from irrigation_app.data_layers import (  # noqa: E402
+    BRONZE_WEATHER_DIR,
+    DAILY_PATH,
+    UNITS_PATH,
+    WEATHER_LOCATIONS_PATH,
+    WEATHER_PREVIOUS_RUNS_PATH,
+    WEATHER_UNIT_LOCATIONS_PATH,
+)
 from irrigation_app.weather.locations import locations_from_units  # noqa: E402
 from irrigation_app.weather.open_meteo import RateLimitedError, WeatherError, fetch_previous_runs  # noqa: E402
 
-from irrigation_app.data_layers import DAILY_PATH, UNITS_PATH  # noqa: E402
-WEATHER_DIR = PROJECT_ROOT / "data" / "weather"
 PAUSE_SECONDS = 1.0
 
 
@@ -34,7 +41,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--units", type=Path, default=UNITS_PATH)
     parser.add_argument("--daily", type=Path, default=DAILY_PATH)
-    parser.add_argument("--output-dir", type=Path, default=WEATHER_DIR)
+    parser.add_argument("--bronze-dir", type=Path, default=BRONZE_WEATHER_DIR, help="un Parquet por ubicación, tal como llega")
+    parser.add_argument("--output-previous-runs", type=Path, default=WEATHER_PREVIOUS_RUNS_PATH)
+    parser.add_argument("--output-locations", type=Path, default=WEATHER_LOCATIONS_PATH)
+    parser.add_argument("--output-unit-locations", type=Path, default=WEATHER_UNIT_LOCATIONS_PATH)
     parser.add_argument("--pause", type=float, default=PAUSE_SECONDS, help="segundos entre peticiones")
     args = parser.parse_args()
 
@@ -50,10 +60,12 @@ def main() -> None:
     # 5.000 por hora), y pedir todo el periodo para todas supera el límite diario.
     unit_days = pd.read_parquet(args.daily, columns=["unit_id", "day"]).groupby("unit_id")["day"].agg(["min", "max"])
     periods = unit_days.join(unit_locations.set_index("unit_id")).groupby("location_id").agg(start=("min", "min"), end=("max", "max"))
-    cache_dir = args.output_dir / "previous_runs"
+    cache_dir = args.bronze_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
-    locations.to_parquet(args.output_dir / "locations.parquet", index=False)
-    unit_locations.to_parquet(args.output_dir / "unit_locations.parquet", index=False)
+    for path in (args.output_previous_runs, args.output_locations, args.output_unit_locations):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    locations.to_parquet(args.output_locations, index=False)
+    unit_locations.to_parquet(args.output_unit_locations, index=False)
 
     print(f"{len(units)} unidades en {len(locations)} ubicaciones")
     failed = []
@@ -79,7 +91,7 @@ def main() -> None:
     files = sorted(cache_dir.glob("*.parquet"))
     if files:
         combined = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-        combined.to_parquet(args.output_dir / "previous_runs.parquet", index=False)
+        combined.to_parquet(args.output_previous_runs, index=False)
         print(f"\n{len(files)} de {len(locations)} ubicaciones descargadas, {len(combined):,} filas en total")
     if failed:
         print("Fallaron:", ", ".join(failed), "(vuelve a ejecutar para reintentarlas)")

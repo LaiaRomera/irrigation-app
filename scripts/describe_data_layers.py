@@ -5,7 +5,9 @@ Uso (desde la raíz del proyecto):
 
 - Plata y oro: lee los Parquet reales de data/silver/ y data/gold/ y cuenta filas, columnas,
   unidades, rango de fechas y tamaño en disco.
-- Bronce: los exports originales de Agrodevices están fuera del repositorio. Se indican con
+- Bronce (meteorología): los Parquet tal como los devolvió Open-Meteo, uno por ubicación, en
+  data/bronze/weather/previous_runs/. Se anotan nº de archivos, filas, ubicaciones y rango de días.
+- Bronce (exports): los exports originales de Agrodevices están fuera del repositorio. Se indican con
   --bronze-dir o con la variable de entorno AGRODEVICES_EXPORTS_DIR. Por cada CSV se anotan nombre,
   tamaño, filas, rango de fechas (si tiene columna `fecha`) y un hash sha256 corto. Si la carpeta no
   existe, el script lo dice y sigue sin fallar.
@@ -28,6 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from irrigation_app.data_layers import (  # noqa: E402
     BRONZE_EXPORTS_ENV,
     BRONZE_MANIFEST_PATH,
+    BRONZE_WEATHER_DIR,
     GOLD_FILES,
     GOLD_MANIFEST_PATH,
     SILVER_FILES,
@@ -41,6 +44,7 @@ DATE_COLUMNS = {
     "daily.parquet": "day",
     "snapshots.parquet": "day",
     "training_table.parquet": "origin_day",
+    "weather_previous_runs.parquet": "day",
 }
 UNIT_COLUMN = "unit_id"
 BRONZE_DATE_COLUMN = "fecha"
@@ -114,6 +118,29 @@ def describe_bronze(directory: Path | None) -> dict:
     return {"available": True, "files": [describe_export(p) for p in sorted(directory.glob("*.csv"))]}
 
 
+def describe_bronze_weather(directory: Path) -> dict:
+    """Recuento de la meteorología descargada tal cual: un Parquet por ubicación, solo cifras."""
+    files = sorted(directory.glob("*.parquet")) if directory.is_dir() else []
+    if not files:
+        return {"available": False}
+    rows, first, last = 0, None, None
+    for path in files:
+        frame = pd.read_parquet(path, columns=["day", "lead_days"])
+        rows += len(frame)
+        low, high = frame["day"].min(), frame["day"].max()
+        first = low if first is None else min(first, low)
+        last = high if last is None else max(last, high)
+    return {
+        "available": True,
+        "directory": str(directory.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+        "locations": len(files),
+        "size_bytes": sum(p.stat().st_size for p in files),
+        "rows": rows,
+        "date_from": str(first.date()),
+        "date_to": str(last.date()),
+    }
+
+
 def write_manifest(path: Path, layer: str, files: list[dict], extra: dict | None = None) -> None:
     manifest = {"layer": layer, "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "files": files}
     manifest.update(extra or {})
@@ -141,15 +168,25 @@ def main() -> None:
     parser.add_argument("--bronze-dir", type=Path, default=bronze_exports_dir(), help=f"carpeta de los exports (o variable {BRONZE_EXPORTS_ENV})")
     args = parser.parse_args()
 
-    print("BRONCE (exports originales de Agrodevices, fuera del repositorio)")
+    print("BRONCE (exports originales de Agrodevices, fuera del repositorio, y meteorología tal cual)")
     bronze = describe_bronze(args.bronze_dir)
     if bronze["available"]:
         for info in bronze["files"]:
             print(format_file(info))
-        write_manifest(BRONZE_MANIFEST_PATH, "bronze", bronze["files"])
-        print(f"  Manifiesto: {BRONZE_MANIFEST_PATH.relative_to(PROJECT_ROOT)}")
+        export_files = bronze["files"]
     else:
-        print(f"  No se encuentra la carpeta de exports (usa --bronze-dir o la variable {BRONZE_EXPORTS_ENV}); se omite.")
+        print(f"  No se encuentra la carpeta de exports (usa --bronze-dir o la variable {BRONZE_EXPORTS_ENV}); se conserva lo anotado antes.")
+        previous = json.loads(BRONZE_MANIFEST_PATH.read_text(encoding="utf-8")) if BRONZE_MANIFEST_PATH.exists() else {}
+        export_files = previous.get("files", [])
+    weather = describe_bronze_weather(BRONZE_WEATHER_DIR)
+    if weather["available"]:
+        print(
+            f"  weather/previous_runs/ {weather['locations']} ubicaciones, {weather['size_bytes'] / 1e6:,.1f} MB, "
+            f"{weather['rows']:,} filas, {weather['date_from']} a {weather['date_to']}"
+        )
+    if export_files or weather["available"]:
+        write_manifest(BRONZE_MANIFEST_PATH, "bronze", export_files, {"weather": weather})
+        print(f"  Manifiesto: {BRONZE_MANIFEST_PATH.relative_to(PROJECT_ROOT)}")
 
     for layer, name, paths, manifest_path in (
         ("silver", "PLATA (limpios y tipados)", SILVER_FILES, SILVER_MANIFEST_PATH),

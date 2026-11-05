@@ -73,7 +73,8 @@ def possible_irrigation(
     no se marca.
 
     `rain` (opcional) trae `unit_id`, `day` y `rain_mm`, y `rain_mm` de la fila d es la lluvia del
-    intervalo (se aproxima con la del día d−1 con antelación 0; quien llama la desplaza). Hay
+    intervalo (`interval_rain` la aproxima con el máximo de la lluvia de d−1 y de d, con
+    antelación 0, a partir de datos diarios). Hay
     lluvia suficiente si `rain_mm >= rain_limit_mm`. Si `rain` es None no se mira la lluvia (caso
     más duro); si para un día no hay dato, la lluvia es desconocida y **no se usa para
     descartar** el riego (se marca igual).
@@ -98,6 +99,36 @@ def possible_irrigation(
     rained = result["rain_mm"] >= rain_limit_mm  # nulo -> False: no descarta el riego
     result["possible_irrigation"] = (result["rise"] > rise_threshold) & ~rained
     return result[["unit_id", "day", "rise", "rain_mm", "possible_irrigation"]]
+
+
+def interval_rain(weather: pd.DataFrame, unit_locations: pd.DataFrame) -> pd.DataFrame:
+    """Lluvia con la que `possible_irrigation` descarta una subida: `unit_id`, `day` y `rain_mm`.
+
+    La fila de `day` = d describe el intervalo de la madrugada de d−1 a la de d (05:00 UTC). Con
+    datos diarios se aproxima con **el máximo de la lluvia del día d−1 y la del día d**, ambas de
+    la previsión con antelación 0 y de la ubicación de la unidad (decidido por Laia el 5 de
+    noviembre de 2026, propuesta de AgronomoFAO56):
+
+    - el día d−1 cubre la lluvia de la tarde y la noche anteriores;
+    - el día d cubre la lluvia de madrugada (00:00 a 05:00 UTC), que sube el índice antes de la
+      foto de las 05:00 sin ser riego.
+
+    **Es una aproximación**: los datos meteorológicos son diarios (día UTC completo), no del tramo
+    de 05:00 a 05:00. Por eso el día d trae también la lluvia de después de las 05:00, que no puede
+    haber influido en la foto, y el día d−1 la de antes de las 05:00 de ese día. El efecto es
+    descartar de más (se marcan algo menos riegos); con una lluvia de umbral baja es lo prudente.
+    Si solo se conoce uno de los dos días, vale ese; si no se conoce ninguno, el día no aparece
+    (la lluvia es desconocida y no descarta el riego).
+    """
+    rain = weather.loc[weather["lead_days"] == 0, ["location_id", "day", "precipitation_mm"]].copy()
+    rain["day"] = pd.to_datetime(rain["day"], utc=True)
+    same_day = rain
+    previous_day = rain.assign(day=rain["day"] + pd.Timedelta(days=1))  # la lluvia de d−1 va a la fila d
+    both = pd.concat([same_day, previous_day], ignore_index=True)
+    interval = both.groupby(["location_id", "day"], as_index=False)["precipitation_mm"].max()
+    mapping = unit_locations[["unit_id", "location_id"]].drop_duplicates("unit_id")
+    merged = mapping.merge(interval, on="location_id")
+    return merged.rename(columns={"precipitation_mm": "rain_mm"})[["unit_id", "day", "rain_mm"]]
 
 
 def _unit_daily_index(snapshots: pd.DataFrame, depth_agg: str) -> pd.DataFrame:
