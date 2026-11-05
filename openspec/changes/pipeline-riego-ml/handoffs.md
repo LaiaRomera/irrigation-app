@@ -35,3 +35,27 @@ Para Laia, usar `Para: Laia` y decir con claridad qué tiene que decidir.
 - **Contrato:** Ninguno (la tabla de oro tiene las mismas columnas).
 - **Necesito de ti:** Laia: texto propuesto para `docs/decisiones.md` y para `tasks.md`/specs, que los editas tú: «Un día de unidad con alguna lectura SMMAdmin cuenta como día de instalación; se une a la regla automática (umbral 20, tope 30 días) y a la lista manual (5337, 5515)». Cualquier cifra de `docs/decisiones.md` que cite 648.148 ejemplos queda desfasada.
 - **Estado:** abierta
+
+### 2026-11-05 · DataEngineerML → Laia · Tareas 1.3, 0.5 y 3.1 hechas (unión de meteorología, marcador integration, reparto)
+- **Qué:** `src/irrigation_app/features.py` une la meteorología a cada ejemplo con `forecast_days`, `weather_features` y `add_weather_features`. Para el horizonte N toma los días origen+0 a origen+N−1, cada uno con su antelación, suma lluvia y ET₀ y promedia temperatura, humedad y viento. Un dato ausente deja la variable nula y `weather_incomplete = True`, sin rellenar. La inferencia (4.4) reutiliza las mismas funciones. `pytest.ini` registra `integration` y `conftest.py` salta esas pruebas si no hay PostgreSQL en `localhost:5433`. `src/irrigation_app/models/split.py` hace el reparto por ubicación y fecha de corte (margen de 7 días, semilla 42, `41.66_0.56` siempre a entrenamiento) y lo guarda en `data/ml/split.json`. Probado solo con datos sintéticos; la unión con la meteorología real (1.4) espera a que termine la descarga.
+- **Contrato:** Ninguno.
+- **Necesito de ti:** Laia: elegir la fecha de corte. Se recomienda el 31 de julio de 2026 (21,6 % de los ejemplos después del corte; validación y test cubren de agosto a octubre). Con 30/6 serían 29,9 % y con 31/8, 13,2 %.
+- **Estado:** abierta
+
+### 2026-11-05 · AgronomoFAO56 → Laia, DataEngineerML y ReportUI · Tareas 5.1, 5.2 y 5.3 hechas (C5 disponible)
+- **Qué:** `reference_plot.py` (REFERENCE_PLOT, 1168 confirmada; modelos Sourced/Anchor/Anchors/ReferencePlot), `irrigation_engine/reference_values.py` (tablas FAO-56 con fuente y estado verified/assumption; UnknownReferenceError ante cultivo, textura o riego desconocidos) y `scripts/compute_anchors.py` (muestra las líneas de Agrodevices convertidas, 79,4 y 59,7, frente a los percentiles de la media 15/25/35 cm sin días de instalación; máximo real 76,7). Anclajes en REFERENCE_PLOT con review="pending" hasta que Laia los confirme. Supuestos por confirmar: Ea genérica 0,75, punto medio de TAW (155 mm/m) y de fw (0,35), caso de Kc sin cubierta y con helada, Zr 1,0 m.
+- **Contrato:** C5 definido (campos: unit_id, status, crop/soil_texture/irrigation_type/cycle_start_date/area_m2 como Sourced o None, average_depths_cm, smm_min/smm_max, anchors.upper/lower con index, source, method, review). C2 aún sin crear (fase 6).
+- **Necesito de ti:** Laia: confirmar anclajes y supuestos. DataEngineerML: nada; si cambia `installation_days`, la referencia sigue válida. ReportUI: nada todavía.
+- **Estado:** abierta
+
+### 2026-11-05 · AgronomoFAO56 → todos · Anclajes confirmados y cubierta vegetal como supuesto (C5)
+- **Qué:** Laia confirma los anclajes de Agrodevices: superior 79,4 (línea 7889) e inferior 59,7 (línea 8834). Ya están `confirmed` en `REFERENCE_PLOT` (`reviewed_by="Laia"`, `reviewed_on=2026-11-05`); `compute_anchors.py` lo imprime. Supuestos aceptados por Laia: Zr 1,0 m, agua útil 155 mm/m, fw 0,35; eficiencia 0,90 con goteo (0,75 solo si faltara el tipo de riego). Nuevo campo `REFERENCE_PLOT.ground_cover` (`active_cover` o `no_cover`, con origen): en la 1168 es `active_cover`, origen `assumption` (supuesto de Laia, sin confirmar; se preguntará a Agrodevices). `reference_values.kc_case()` da Kc 0,50 / 1,20 / 0,95 (tabla 12) con cubierta, frente a 0,45 / 0,95 / 0,70 sin ella. El motor añadirá la limitación `assumed_ground_cover` con `ground_cover_limitation()`: sin cubierta la dosis de pleno verano baja un 21 %.
+- **Contrato:** C5 amplía `REFERENCE_PLOT` con `ground_cover` y con `reviewed_by` y `reviewed_on` en cada anclaje.
+- **Necesito de ti:** ReportUI: el informe debe mostrar `assumed_ground_cover` junto a `assumed_crop_stage`. DataEngineerML: nada.
+- **Estado:** abierta
+
+### 2026-11-05 · DataEngineerML → Laia · Reparto de datos generado con corte 31/07/2026 (3.1 cerrada)
+- **Qué:** `data/ml/split.json` generado con corte 2026-07-31, margen 7 días, semilla 42. 14 de 73 ubicaciones apartadas para test (26 unidades): 41.44_-5.30, 41.44_0.65, 41.58_0.65, 41.67_1.13, 41.72_0.98, 41.79_0.97, 41.88_0.23, 41.90_0.23, 41.90_0.24, 41.91_0.25, 41.96_-0.31, 41.99_0.20, 41.99_0.21, 42.00_-0.66. `41.66_0.56` queda en entrenamiento. Ejemplos: entrenamiento 373.302, validación 94.944, test 43.865 y 130.129 sin asignar (margen y apartadas anteriores al corte). Por horizonte (1 a 7 días), el test va de 6.582 a 5.955. Recargar con `load_split` da la misma asignación. Añadida una prueba con un `split.json` de ejemplo.
+- **Contrato:** Ninguno. `split.json` queda ignorado por git, igual que el resto de `data/`.
+- **Necesito de ti:** Nada. Para 3.4, la evaluación sin unidades `shared` es adicional a este reparto.
+- **Estado:** cerrada
