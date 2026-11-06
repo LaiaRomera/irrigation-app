@@ -32,6 +32,12 @@ HOURS_PER_DAY = 24
 FORECAST_HORIZON_DAYS = 7
 ALL_LEAD_DAYS = tuple(range(FORECAST_HORIZON_DAYS))
 
+# Previsión actual (tarea 8.1): 8 días, antelaciones 0 a 7. El modelo usa origen..origen+6 (horizonte 7)
+# y el motor de riego origen+1..origen+7 (contrato C2), así que hacen falta 8.
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+FORECAST_DAYS = 8
+MAX_FORECAST_DAYS = 16  # el máximo de `forecast_days` de Open-Meteo
+
 # Nombre propio -> (variable de Open-Meteo, cómo se resume un día).
 DAILY_VARIABLES = {
     "precipitation_mm": ("precipitation", "sum"),
@@ -123,6 +129,40 @@ def previous_runs_to_daily(data: dict, lead_days: tuple[int, ...]) -> pd.DataFra
         frame = frame.reset_index().assign(lead_days=lead)
         frames.append(frame[frame[list(DAILY_VARIABLES)].notna().any(axis=1)])
     return pd.concat(frames, ignore_index=True)[DAILY_COLUMNS]
+
+
+def forecast_to_daily(data: dict, days: int) -> pd.DataFrame:
+    """Resume a días UTC la respuesta por horas de la previsión actual.
+
+    La antelación de cada día es su distancia al primer día de la respuesta (el de hoy, antelación 0):
+    es la previsión que existe en producción, donde el día origen+k tiene antelación k. Un día solo
+    cuenta con sus 24 horas completas (como en `previous_runs_to_daily`); los días sin ningún valor no
+    se devuelven, así que una respuesta incompleta da menos filas, nunca valores inventados.
+    """
+    daily = previous_runs_to_daily(data, (0,))
+    first_day = pd.to_datetime(data["hourly"]["time"][0], utc=True).floor("D")
+    daily["lead_days"] = ((daily["day"] - first_day) / pd.Timedelta(days=1)).round().astype(int)
+    return daily[daily["lead_days"] < days].reset_index(drop=True)[DAILY_COLUMNS]
+
+
+def fetch_forecast(latitude: float, longitude: float, days: int = FORECAST_DAYS, session=None) -> pd.DataFrame:
+    """Previsión actual de una ubicación para `days` días a partir de hoy (día UTC), una fila por día.
+
+    En producción no hay Previous Runs: la previsión de hoy es la antelación 0 para hoy, 1 para mañana,
+    etc. (`lead_days` de 0 a `days - 1`). Mismas columnas y unidades que `fetch_previous_runs`. Son 5
+    variables por 8 días: una petición que cuenta como una sola llamada de la cuota. `session` permite
+    sustituir `requests` en las pruebas.
+    """
+    if not 1 <= days <= MAX_FORECAST_DAYS:
+        raise ValueError(f"days debe estar entre 1 y {MAX_FORECAST_DAYS}")
+    params = {
+        "latitude": float(latitude),
+        "longitude": float(longitude),
+        "hourly": ",".join(variable for variable, _ in DAILY_VARIABLES.values()),
+        "forecast_days": days,
+        "timezone": "UTC",
+    }
+    return forecast_to_daily(_get_json(FORECAST_URL, params, session), days)
 
 
 def fetch_previous_runs(

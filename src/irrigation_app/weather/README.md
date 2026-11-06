@@ -34,6 +34,20 @@ fetch_previous_runs(41.56, 0.31, date(2024, 6, 1), date(2026, 11, 2))  # antelac
 
 Devuelve una fila por día y antelación con `precipitation_mm`, `et0_mm`, `temperature_c`, `humidity_pct` y `wind_kmh`. Un día solo tiene valor si Open-Meteo dio sus 24 horas; los días sin ningún valor no se devuelven. Los errores no incluyen la URL, porque lleva las coordenadas.
 
+### Previsión actual (producción)
+
+```python
+from irrigation_app.weather.open_meteo import fetch_forecast
+
+fetch_forecast(41.99, 0.21)  # 8 días desde hoy (UTC), antelaciones de 0 a 7
+```
+
+En producción no hay Previous Runs: la previsión de hoy es la antelación 0 para hoy, 1 para mañana, etc. Devuelve las mismas columnas y unidades que `fetch_previous_runs`, con el día UTC y sus 24 horas completas (un día incompleto no se devuelve, nunca se rellena). Pide 5 variables para 8 días: una sola llamada de la cuota. Son 8 días y no 7 porque el modelo usa de origen a origen+6 pero el motor de riego usa de origen+1 a origen+7. Comprobado en vivo el 6 de noviembre de 2026 para la 1168: las variables de `features.py` desde la previsión actual y desde Previous Runs (para el mismo origen) coinciden con diferencias de hasta 0,2 mm en lluvia y ET₀ acumuladas.
+
+### Guardarla en la base de datos (`forecast_store.py`, contrato C3)
+
+`store_forecast` guarda en `forecast_data` la previsión de un origen (8 filas: el día origen+k con antelación k) y `load_forecast` la devuelve con los nombres de esa tabla (`rainmm`, `eto`, `tmedia`, `rhmedia`, `vientomedia`). La columna `source` es `forecast` (previsión actual) o `previous_runs` (archivadas, para repetir un día pasado). Reglas: el día es el día UTC (como el entrenamiento); repetir un origen no cambia lo guardado, solo rellena huecos; las columnas que el proyecto no tiene quedan en nulo.
+
 ## Qué no incluye
 
 No es un servicio: no tiene API propia, ni tareas programadas, ni caché. Quien lo use (el proceso de entrenamiento o la tarea diaria) lo llama como una función.

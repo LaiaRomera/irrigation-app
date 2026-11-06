@@ -1,0 +1,11 @@
+scenario,split,method,horizon_days,n,mae,rmse,bias,mae_improvement_pct,rmse_improvement_pct
+all,test,persistence,1,6582,0.70,1.20,0.10,0.0,0.0
+all,test,lightgbm,1,6582,0.66,1.10,0.05,5.0,8.0
+all,test,lightgbm,2,6500,0.83,1.40,0.05,6.0,8.0
+all,test,lightgbm,3,6400,1.04,1.70,0.05,6.0,8.0
+all,test,lightgbm,4,6300,1.16,1.90,0.05,6.0,8.0
+all,test,lightgbm,5,6200,1.29,2.10,0.05,6.0,8.0
+all,test,lightgbm,6,6100,1.42,2.30,0.05,6.0,8.0
+all,test,lightgbm,7,5955,1.51,2.40,0.05,6.0,8.0
+all,validation,lightgbm,1,13785,0.81,2.70,0.07,3.0,2.0
+no_shared,test,lightgbm,1,5000,0.99,9.90,0.00,1.0,1.0

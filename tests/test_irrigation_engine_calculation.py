@@ -170,7 +170,7 @@ def test_upper_anchor_above_observed_max_limitation_quantifies_the_bias():
     d = (UPPER - 76.7) / (UPPER - LOWER)
     assert lim.params["observed_max"] == 76.7 and lim.params["depletion_at_observed_max"] == pytest.approx(d, abs=1e-3)
     assert lim.params["dose_overestimate_mm"] == pytest.approx(d * 155, abs=0.1)  # unos 21 mm
-    assert "76.7" in lim.message and "79.4" in lim.message
+    assert "76,7" in lim.message and "79,4" in lim.message
     assert lim.degrades_validation is False
 
 
@@ -379,3 +379,10 @@ def test_sensitivity_keeps_working_with_the_new_criterion():
     s = r.sensitivity
     assert s.net_dose_min_mm <= r.net_dose_mm <= s.net_dose_max_mm
     assert len(s.cases) == 4
+
+
+def test_user_texts_use_decimal_comma():
+    import re
+    r = run_engine(engine_input(CROSS_ON_DAY_4))
+    texts = [lim.message for lim in r.limitations] + [f.note for f in r.factors]
+    assert texts and all(not re.search(r"\d\.\d", t) for t in texts)

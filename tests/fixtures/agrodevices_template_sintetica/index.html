@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><title>Plantilla sintética</title></head>
+<body>
+<!-- Plantilla SINTÉTICA para las pruebas: imita la forma de la de Agrodevices (un index.html con marcas Jinja). No es la real. -->
+<h1>PLANTILLA-SINTETICA {{ c.plot_label }}</h1>
+<p id="fecha">{{ c.origin_date | date_es }}</p>
+<p id="marca">{% if c.indicative %}INDICATIVA{% endif %} {% if c.validation_status == "insufficient_data" %}insufficient_data{% endif %}</p>
+<p id="resumen">{{ text.summary }}</p>
+<p id="error">{% for e in c.typical_error %}[{{ e.horizon_days }}:{{ e.mae | num(2) }}]{% endfor %}</p>
+{% if charts.moisture %}<img alt="humedad" src="{{ charts.moisture }}">{% endif %}
+</body>
+</html>

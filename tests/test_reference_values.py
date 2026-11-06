@@ -56,7 +56,7 @@ def test_dose_scales_with_kc_so_no_cover_is_lower():
 
 def test_ground_cover_limitation_text_states_both_kc():
     text = rv.ground_cover_limitation("manzano", "active_cover")
-    assert "sin confirmar" in text and "1.20" in text and "0.95" in text and "-21%" in text
+    assert "sin confirmar" in text and "1,20" in text and "0,95" in text and "-21%" in text
 
 
 def test_depletion_fraction_adjusts_with_etc_and_is_bounded():
@@ -107,3 +107,19 @@ def test_every_reference_has_a_source():
         assert ref.source
     for c in rv.CROPS.values():
         assert set(c.sources) == {"root_depth_m", "depletion_fraction", "kc", "stage_days"}
+
+
+def test_fmt_es_uses_decimal_comma():
+    assert rv.fmt_es(0.5, 2) == "0,50" and rv.fmt_es(76.7, 1) == "76,7" and rv.fmt_es(0.35) == "0,35"
+    assert rv.fmt_es(3) == "3"
+
+
+def test_reference_notes_use_decimal_comma():
+    import re
+    notes = [
+        rv.ground_cover_limitation("manzano", "active_cover"), rv.ground_cover_limitation("manzano", "no_cover"),
+        rv.depletion_fraction("manzano", etc_mm_day=3.5).note, rv.root_depth_for_scheduling("manzano").note,
+        rv.drip_exposed_wetted_fraction(0.5).note,
+        *(r.note for r in rv.field_capacity_and_wilting_point("franco arcilloso limoso")),
+    ]
+    assert all(not re.search(r"\d\.\d", n) for n in notes)

@@ -113,8 +113,47 @@ Qué hace y qué garantías da:
 4. Si está vacía, aplica `sql/create_schema.sql` (incluida la extensión pgvector) y muestra el recuento de tablas, claves foráneas, `CHECK` y unicidades, y la versión de pgvector.
 5. Nunca imprime la contraseña.
 
+Para una base que **ya tiene el esquema** (por ejemplo, para añadir las tablas del modelo de humedad):
+
+```bash
+.venv/Scripts/python scripts/apply_schema.py .env.docker-pg --migration sql/migrations/001_ml_tables.sql
+```
+
+Con `--migration` el script exige que la base ya tenga tablas, se niega si alguna de las que crea el archivo ya existe y lo aplica en una sola transacción. Después, para tener la parcela de referencia y los modelos registrados (siempre primero en el Docker local; `--dry-run` solo cuenta, y escribir en Aiven exige `--allow-remote`):
+
+```bash
+.venv/Scripts/python scripts/load_reference_plot.py --env-file .env.docker-pg
+.venv/Scripts/python scripts/register_models.py --env-file .env.docker-pg
+```
+
 Resultado esperado: `Esquema aplicado: 12 tablas, 10 claves foráneas, 13 CHECK y 8 UNIQUE.` y `Extensión vector: 0.8.7` (la versión puede variar).
 
+
+### 5.1. Predicción diaria (`run_daily.py`)
+
+Con el PostgreSQL local en marcha y la parcela de referencia y los modelos cargados (los dos comandos de arriba), la predicción de hoy se ejecuta así:
+
+```bash
+.venv/Scripts/python scripts/run_daily.py --env-file .env.docker-pg
+```
+
+Para **reproducir un día pasado** (por ejemplo, el de la demostración; conviene un día de campaña, de marzo al 26 de septiembre) y enseñar una recomendación aunque el export de lecturas sea antiguo:
+
+```bash
+.venv/Scripts/python scripts/run_daily.py --env-file .env.docker-pg --as-of 2026-08-25
+```
+
+Qué hace: avisa si los 7 días a recomendar caen fuera de la campaña; carga las lecturas nuevas del export local (`data/silver/readings.parquet`, unos 5 segundos y sin duplicar); obtiene la previsión de 8 días y la guarda en `forecast_data` (la actual de Open-Meteo si el origen es hoy, o las archivadas de ese día si es pasado; si ya estaba guardada completa no se vuelve a pedir); escribe 7 predicciones por sonda en `ml_prediction` con el modelo activo y deja anotada la ejecución en `job_run`. Repetir el mismo día no cambia ni duplica nada.
+
+Opciones útiles: `--skip-readings` (no carga lecturas), `--forecast archived` (usa las previsiones archivadas aunque el origen sea hoy), `--plot-code` (otra parcela; por defecto la de referencia) y `--allow-remote` (escribir en Aiven; no hace falta ni se recomienda ahora).
+
+Qué esperar:
+
+- **Con el export antiguo**, el origen de hoy sale `insufficient_data` (sin valor), porque la última lectura tiene más de 72 horas; de 36 a 72 horas sale persistencia provisional. Es el comportamiento decidido, no un fallo: por eso la demostración usa `--as-of`.
+- **Si falla Open-Meteo** (sin red, respuesta incompleta o límite de uso 429), el script **escribe igualmente** las predicciones con persistencia (`persistence_fallback`, `provisional`, limitación `weather_missing`), avisa por pantalla, deja el `job_run` en `partial` con el motivo y termina con código 0. No insiste tras un 429. Como `ml_prediction` es inmutable, esa predicción degradada queda fija para ese origen aunque luego vuelva la red.
+- La fecha de origen no puede ser futura ni de hoy antes de las 05:15 UTC.
+- Códigos de salida: 0 correcto o parcial (aviso en pantalla), 1 fallo real (por ejemplo, base de datos caída), 2 uso incorrecto (por ejemplo, otra ejecución en marcha o parcela inexistente).
+- Las alertas (tarea 8.4) no se generan todavía: se decide el 2 de diciembre de 2026.
 ## 6. Probar el login con Auth0
 
 La prueba comprueba que un usuario puede entrar con email y contraseña a una app de Streamlit y que la app recibe su email. Se hace en local y es desechable.

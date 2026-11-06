@@ -99,3 +99,65 @@ def add_weather_features(
     )
     merged.index = examples.index
     return merged.drop(columns="_origin_utc")
+
+
+# --- Ronda de mejora 2 (6 de noviembre de 2026): lluvia y ET0 de cada día del periodo -------------
+# Además de la suma del periodo, el modelo puede ver cuándo cae la lluvia y cuánta ET0 hay cada día.
+# Siguen las mismas reglas que arriba: el día k del periodo se toma con antelación k (sin fugas) y
+# un día que no existe (horizonte menor de 7) o sin dato queda **nulo**, no se rellena.
+MAX_DAILY_LEADS = 7
+DAILY_VARIABLES = {"precipitation_mm": "precip_d", "et0_mm": "et0_d"}
+
+
+def daily_weather_columns(horizon_days: int = MAX_DAILY_LEADS) -> list[str]:
+    """Nombres de las columnas por día que usa un modelo de ese horizonte (`precip_d0`..., `et0_d0`...)."""
+    return [f"{prefix}{k}" for prefix in DAILY_VARIABLES.values() for k in range(min(horizon_days, MAX_DAILY_LEADS))]
+
+
+DAILY_FEATURE_COLUMNS = daily_weather_columns(MAX_DAILY_LEADS)
+
+
+def daily_weather_features(
+    examples: pd.DataFrame,
+    weather: pd.DataFrame,
+    unit_locations: pd.DataFrame,
+) -> pd.DataFrame:
+    """Una fila por (unidad, origen, horizonte) con la lluvia y la ET0 de cada día del periodo.
+
+    Columnas `precip_d0`..`precip_d6` y `et0_d0`..`et0_d6`: el día k es origen+k con antelación k. Para
+    un horizonte N solo los días 0 a N−1 pueden tener valor; el resto queda nulo. Mismas entradas que
+    `weather_features`; sirve igual para entrenar y para predecir.
+    """
+    days = forecast_days(examples)
+    mapping = unit_locations[["unit_id", "location_id"]].drop_duplicates("unit_id")
+    days = days.merge(mapping, on="unit_id", how="left")
+    daily = weather[[*WEATHER_KEY, *DAILY_VARIABLES]].copy()
+    daily["day"] = _utc_day(daily["day"])
+    if daily.duplicated(WEATHER_KEY).any():
+        raise ValueError("La meteorología tiene filas repetidas para la misma ubicación, día y antelación")
+    days = days.merge(daily, on=WEATHER_KEY, how="left")
+
+    keys = days[KEY_COLUMNS].drop_duplicates().set_index(KEY_COLUMNS)
+    result = keys
+    for source, prefix in DAILY_VARIABLES.items():
+        wide = days.pivot(index=KEY_COLUMNS, columns="lead_days", values=source)
+        wide = wide.reindex(columns=range(MAX_DAILY_LEADS))
+        wide.columns = [f"{prefix}{k}" for k in wide.columns]
+        result = result.join(wide)
+    return result.reset_index()
+
+
+def add_daily_weather_features(
+    examples: pd.DataFrame,
+    weather: pd.DataFrame,
+    unit_locations: pd.DataFrame,
+) -> pd.DataFrame:
+    """Devuelve `examples` (mismas filas y orden) con las columnas por día añadidas."""
+    features = daily_weather_features(examples, weather, unit_locations)
+    features["_origin_utc"] = features.pop("origin_day")
+    keyed = examples.assign(_origin_utc=_utc_day(examples["origin_day"]))
+    merged = keyed.merge(
+        features, on=["unit_id", "_origin_utc", "horizon_days"], how="left", validate="many_to_one"
+    )
+    merged.index = examples.index
+    return merged.drop(columns="_origin_utc")

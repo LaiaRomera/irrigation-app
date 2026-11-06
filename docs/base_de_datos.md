@@ -9,6 +9,8 @@ Si cambia el esquema, hay que actualizar estos cuatro sitios.
 
 ## 1. Resumen
 
+> **Actualización del 6 de noviembre de 2026:** se añaden `ml_model` y `ml_prediction` (migración 001) y dos columnas en `plot`, `plot_code` e `irrigation_interval_days` (migración 002); ambas están también en `create_schema.sql`. Con todo aplicado son **14 tablas, 12 claves foráneas, 27 `CHECK` y 10 unicidades** (recuento de `pg_constraint` en PostgreSQL 17.11 con pgvector, Docker local). Los números de la lista siguiente y de las secciones 6 y 7 son los de las 12 tablas originales.
+
 - **Motor:** PostgreSQL 17 con la extensión **pgvector** (búsqueda por similitud de vectores, para el RAG). Base de datos `irrigation_app`, codificación UTF-8. Sustituye al esquema de MySQL, que se abandonó el 22 de octubre de 2026 con la base todavía vacía (ver [decisiones.md](decisiones.md)).
 - **12 tablas, 10 claves foráneas, 13 restricciones `CHECK` y 8 unicidades**, validadas en PostgreSQL 17 con pgvector 0.8.7 (Docker local) y en Aiven PostgreSQL 18.6 con pgvector 0.8.7.
 - **Identificadores en inglés.** Excepción acordada: las columnas meteorológicas conservan los nombres de la tabla de sensores de Agrodevices (`tMax`, `rhMedia`, `eto`...), porque la empresa será quien use la app. PostgreSQL pasa a minúsculas los nombres sin comillas, así que en la base son `tmax`, `rhmedia`..., el mismo nombre sin distinguir mayúsculas. Excepto `weather_code`.
@@ -33,6 +35,8 @@ Si cambia el esquema, hay que actualizar estos cuatro sitios.
 | Alertas | `alert` | Una fila por alerta, con su estado actual |
 | Motor e informes | `recommendation` | Resultado del motor, inmutable y versionado, con copia de lo que usó |
 | Motor e informes | `report` | Informe generado a partir de una recomendación |
+| Modelo de humedad | `ml_model` | Un modelo entrenado (algoritmo y horizonte), con sus métricas; solo uno activo por horizonte |
+| Modelo de humedad | `ml_prediction` | Predicción de humedad por sonda, origen y horizonte; inmutable (contrato C1) |
 | Operación | `job_run` | Registro de las ejecuciones de las tareas |
 | Conocimiento (RAG) | `knowledge_document` | Documento agronómico con su procedencia y licencia |
 | Conocimiento (RAG) | `knowledge_chunk` | Fragmento del documento, con su vector de significado |
@@ -96,6 +100,8 @@ Si cambia el esquema, hay que actualizar estos cuatro sitios.
 | `allowed_depletion` | decimal | No | Pendiente | Agotamiento admisible antes de regar |
 | `irrigation_efficiency` | decimal (0–1) | No | Pendiente | Eficiencia de la instalación. Restricción: mayor que 0 y como máximo 1 |
 | `flow_rate_m3_h` | decimal | No | Pendiente | Caudal representativo de la instalación |
+| `plot_code` | texto (8) | No | Seguro | **Migración 002.** Código aleatorio (módulo `secrets`, no secuencial) de 8 símbolos sin 0, 1, I, L ni O, que el usuario escribe o busca en su lista de parcelas. Único. **No da acceso por sí solo:** el servidor comprueba siempre que la parcela es de la cuenta con sesión iniciada. Vacío en parcelas anteriores a la migración |
+| `irrigation_interval_days` | entero pequeño | No | Seguro | **Migración 002.** Cada cuántos días riega la parcela (1 a 7). El motor lo recibe como `replenishment_interval_days`; vacío = supuesto de 3 días |
 
 **Riesgo conocido:** una corrección manual (`growth_stage_manual`, `kc_manual`) se queda fijada hasta que alguien la borre, aunque la etapa real avance. Mitigación en el MVP: indicar en el informe cuándo se usa un valor manual. Mejora futura: fecha o caducidad de la corrección.
 
@@ -150,13 +156,13 @@ Una fila por parcela, día previsto, antelación y origen. **Nunca se sobrescrib
 |---|---|---|---|
 | `forecast_id` | entero grande, PK, generado | Sí | |
 | `plot_id` | entero grande, FK → `plot` | Sí | |
-| `fecha` | fecha | Sí | Día previsto, en la zona horaria de la parcela |
+| `fecha` | fecha | Sí | Día previsto, **día UTC** (como el entrenamiento y `ml_prediction.target_date`), no el de la zona horaria de la parcela |
 | `captured_at` | fecha y hora | Sí | Cuándo descargamos la previsión. **No** equivale necesariamente a la hora de emisión del modelo |
 | `lead_days` | entero | Sí | Antelación en días (0 o más). Se guarda y no se calcula porque, con la API de ejecuciones anteriores, `captured_at` sería la fecha de descarga y no la de emisión (por verificar en la documentación de Open-Meteo) |
-| `source` | texto | Sí | Endpoint u origen de la previsión (previsión normal o ejecuciones anteriores) |
+| `source` | texto | Sí | Origen de la previsión: `forecast` (previsión actual) o `previous_runs` (ejecuciones anteriores, para repetir un día pasado) |
 | columnas meteorológicas comunes | | | Incluidas `probPrecipitacion` y `uvmax` |
 
-Unicidad: (`plot_id`, `fecha`, `lead_days`, `source`); repetir el refresco el mismo día actualiza la fila y no la duplica.
+Unicidad: (`plot_id`, `fecha`, `lead_days`, `source`); para un origen (`fecha - lead_days`) hay 8 filas, antelaciones 0 a 7. Repetir el refresco no duplica ni sobrescribe: se conserva el primer valor y su `captured_at`, y solo se rellenan los huecos (nulos).
 
 ### `historical_weather`
 
@@ -194,7 +200,7 @@ Unicidad: (`plot_id`, `fecha`).
 |---|---|---|---|
 | `recommendation_id` | entero grande, PK, generado | Sí | |
 | `plot_id` | entero grande, FK → `plot` | Sí | |
-| `period_start`, `period_end` | fecha | Sí | Primer y último día del plan (el día del cálculo y seis más). `period_end` ≥ `period_start` |
+| `period_start`, `period_end` | fecha | Sí | Primer y último día del plan: `period_start` = día de origen + 1 y `period_end` = día de origen + 7 (el día k del plan es origen + k y usa el horizonte k; contrato C2). `period_end` ≥ `period_start` |
 | `version` | entero | Sí | 1 en el primer cálculo; mayor o igual que 1 |
 | `supersedes_id` | entero grande, FK → `recommendation` | No | Versión que sustituye. Vacío si y solo si `version` = 1 |
 | `calculated_at` | fecha y hora | Sí | Instante del cálculo |
@@ -209,6 +215,47 @@ Unicidad: (`plot_id`, `fecha`).
 | `parameter_set_version` | texto | Sí | Versión del conjunto de parámetros agronómicos |
 
 Unicidad: (`plot_id`, `period_start`, `version`). Sin porcentaje de confianza: no hay una metodología que lo respalde.
+
+### `ml_model`
+
+Un modelo entrenado: una fila por algoritmo y horizonte (1 a 7). Los archivos del modelo (`.joblib`) van fuera de la base. Se rellena con `scripts/register_models.py` (módulo `models/registry.py`). *Nota de nombres:* la clave primaria se llama `model_id`, como el resto de tablas (`user_id`, `plot_id`...) y como la referencia desde `ml_prediction`; en `decisiones.md` aparecía como `id`.
+
+| Columna | Tipo | Obligatoria | Descripción |
+|---|---|---|---|
+| `model_id` | entero grande, PK, generado | Sí | |
+| `algorithm` | texto | Sí | `ridge`, `lightgbm` o `persistence` |
+| `horizon_days` | entero pequeño | Sí | 1 a 7 |
+| `trained_at` | fecha y hora | Sí | Cuándo se entrenó |
+| `train_from`, `train_to` | fecha | No | Primer y último día de origen de los ejemplos de entrenamiento |
+| `data_source` | texto | Sí | `agrodevices`, `xms_cat` o `mixed` |
+| `moisture_unit` | texto | Sí | Unidad con la que se entrenó: `relative_index_0_100` (pendiente de confirmar con Agrodevices) |
+| `features` | JSONB | Sí | `{"columns": [...], "target": ..., "versions": {...}, "training_depths_cm": [...]}`: variables en el orden que espera el modelo y profundidades vistas al entrenar |
+| `hyperparameters` | JSONB | No | Hiperparámetros elegidos con la validación, iteración final y MAE de validación |
+| `metrics` | JSONB | No | **Contrato C4.** `typical_error` (MAE, RMSE, sesgo y n en test, con todas las unidades) y `scenarios` (`all` y `no_shared`, en validación y test), cada uno con la persistencia al lado y la mejora en % |
+| `artifact_path` | texto | No | Ruta del archivo, relativa a la raíz del proyecto; solo se abren archivos de `data/` |
+| `code_version` | texto | No | `git:<commit>` al registrar, con `-dirty` si había cambios sin confirmar |
+| `is_active` | sí/no | Sí | Un índice único parcial impide dos modelos activos para el mismo horizonte |
+
+### `ml_prediction`
+
+**Inmutable** (disparador `forbid_change`, como `recommendation`). Una fila por sonda, origen y horizonte. Repetir el cálculo de un origen ya guardado no cambia nada (`INSERT ... ON CONFLICT DO NOTHING`). No guarda la humedad real: el error en producción se calcula uniendo con `sensor_reading` por sensor y `target_date`.
+
+| Columna | Tipo | Obligatoria | Descripción |
+|---|---|---|---|
+| `prediction_id` | entero grande, PK, generado | Sí | |
+| `sensor_id` | entero grande, FK → `sensor` | Sí | |
+| `origin_at` | fecha y hora | Sí | Las 05:00 UTC del día de origen |
+| `horizon_days` | entero pequeño | Sí | 1 a 7 |
+| `target_date` | fecha, generada | Sí | Día UTC de `origin_at` + horizonte |
+| `moisture_pred` | decimal | Según calidad | Índice de 0 a 100, ya sumado a la lectura base y recortado. Nulo solo si `quality` = `insufficient_data` |
+| `base_moisture`, `base_reading_at` | decimal, fecha y hora | No | Lectura base y su fecha, para auditar y calcular la antigüedad |
+| `method` | texto | Según calidad | `model` o `persistence_fallback`. Nulo solo si `insufficient_data` |
+| `quality` | texto | Sí | `validated` (exige `method` = `model`), `provisional` o `insufficient_data` |
+| `limitations` | JSONB | Sí | Lista de objetos `{"code": ..., ...}`: `stale_reading` (`age_hours`, `threshold_hours`), `no_reading`, `no_dawn_reading`, `weather_missing` (`variables`), `model_unavailable`, `clipped_to_range` (`raw_value`), `depth_not_in_training` (`depth_cm`; modelo aplicado pero `provisional`) |
+| `model_id` | entero grande, FK → `ml_model` | No | Modelo activo del horizonte al calcular |
+| `created_at` | fecha y hora | Sí | |
+
+Unicidad: (`sensor_id`, `origin_at`, `horizon_days`). Regla de degradación: lectura de 36 horas o menos y datos completos, `model` / `validated`; con algo ausente, o lectura de 36 a 72 horas, `persistence_fallback` / `provisional`; sin lectura o de más de 72 horas, `insufficient_data` con valor nulo (detalle en `models/inference.py`). El motor debe tratar `moisture_pred` nulo con `insufficient_data` (contrato C2).
 
 ### `report`
 
@@ -292,6 +339,8 @@ Todas son de uno a muchos. El diagrama está en [erd.md](erd.md).
 | `plot` → `alert` | `alert.plot_id` | |
 | `plot` → `recommendation` | `recommendation.plot_id` | |
 | `recommendation` → `recommendation` | `recommendation.supersedes_id` | Cadena de versiones |
+| `sensor` → `ml_prediction` | `ml_prediction.sensor_id` | |
+| `ml_model` → `ml_prediction` | `ml_prediction.model_id` | Opcional |
 | `recommendation` → `report` | `report.recommendation_id` | Obligatoria: la parcela y el periodo del informe salen de la recomendación |
 | `knowledge_document` → `knowledge_chunk` | `knowledge_chunk.document_id` | |
 
@@ -305,6 +354,9 @@ Todas son de uno a muchos. El diagrama está en [erd.md](erd.md).
 |---|---|---|
 | `CHECK` | `app_user.email` | En minúsculas |
 | `CHECK` | `plot.irrigation_efficiency` | Mayor que 0 y como máximo 1, o vacía |
+| `CHECK` | `plot.plot_code` | 8 símbolos del alfabeto sin 0, 1, I, L ni O, o vacío |
+| `CHECK` | `plot.irrigation_interval_days` | Entre 1 y 7, o vacío |
+| `UNIQUE` | `plot.plot_code` | Varios vacíos permitidos |
 | `CHECK` | `sensor.depth_cm` | Mayor que 0 |
 | `CHECK` | `forecast_data.lead_days` | 0 o más |
 | `CHECK` | `alert.status` | `active` o `resolved` |
@@ -316,6 +368,11 @@ Todas son de uno a muchos. El diagrama está en [erd.md](erd.md).
 | `CHECK` | `report.report_type` | `daily` o `weekly` |
 | `CHECK` | `job_run.triggered_by` | `scheduled` o `manual` |
 | `CHECK` | `job_run.status` | `running`, `success`, `partial` o `failed` |
+| `CHECK` | `ml_model` | `algorithm` (`ridge`, `lightgbm`, `persistence`), `horizon_days` 1 a 7, `data_source` y periodo de entrenamiento coherente |
+| `CHECK` | `ml_prediction` | `horizon_days` 1 a 7, `moisture_pred` entre 0 y 100, `method` y `quality` válidos, `limitations` es una lista; valor y método nulos si y solo si `insufficient_data`; `validated` exige `model` |
+| `UNIQUE` | `ml_prediction` (`sensor_id`, `origin_at`, `horizon_days`) | |
+| Índice único parcial | `ml_model` (`horizon_days`) donde `is_active` | Un solo modelo activo por horizonte |
+| Disparador | `ml_prediction` | `forbid_change`: rechaza `UPDATE` y `DELETE` (tabla inmutable) |
 | `UNIQUE` | `app_user.email` | Un email, una cuenta |
 | `UNIQUE` | `sensor.external_code` | Varios vacíos permitidos |
 | `UNIQUE` | `sensor_reading` (`sensor_id`, `measured_at`) | Sin lecturas duplicadas |

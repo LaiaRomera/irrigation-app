@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Informe de riego · {{ c.plot_label }} · {{ c.origin_date | date_es }}</title>
+<!--
+  PLANTILLA MÍNIMA PROPIA (no es la de Agrodevices).
+  PUNTO DE SUSTITUCIÓN: la plantilla real de Agrodevices (MASTER_HTML) se lee de una ruta local indicada en
+  la variable AGRODEVICES_TEMPLATE_DIR (archivo index.html) y no se sube al repositorio. Cuando esa ruta existe,
+  `render.py` rellena ESA plantilla con las mismas variables que usa esta (ver reports/README.md) y esta no se usa.
+-->
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  :root { --ink:#1d2733; --muted:#5b6672; --line:#d5dbe1; --blue:#1f5f99; --warn:#8a4b00; --warnbg:#fff4e0; --bad:#b3261e; --ok:#2e7d32; }
+  body { font-family: "Segoe UI", "DejaVu Sans", Arial, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.4; margin: 0; }
+  h1 { font-size: 18pt; margin: 0 0 2pt; color: var(--blue); }
+  h2 { font-size: 12.5pt; margin: 14pt 0 4pt; color: var(--blue); border-bottom: 1px solid var(--line); padding-bottom: 2pt; }
+  .meta { color: var(--muted); font-size: 9.5pt; }
+  .badges { margin: 8pt 0; }
+  .badge { display: inline-block; padding: 2pt 8pt; border-radius: 10pt; font-weight: 600; font-size: 9.5pt; margin-right: 6pt; border: 1px solid currentColor; }
+  .badge.ind { color: var(--warn); background: var(--warnbg); }
+  .badge.bad { color: var(--bad); }
+  .badge.ok { color: var(--ok); }
+  .stale { border: 2px solid var(--bad); color: var(--bad); padding: 6pt 10pt; margin: 8pt 0; font-weight: 600; }
+  .decision { font-size: 15pt; font-weight: 700; margin: 6pt 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin: 4pt 0; }
+  th, td { border: 1px solid var(--line); padding: 3pt 6pt; text-align: left; }
+  th { background: #f1f4f7; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .note { background: var(--warnbg); border-left: 3px solid var(--warn); padding: 5pt 9pt; margin: 6pt 0; font-size: 9.5pt; }
+  .small { font-size: 8.5pt; color: var(--muted); }
+  img.chart { width: 100%; margin: 4pt 0; page-break-inside: avoid; }
+  ul.lim { margin: 4pt 0 4pt 16pt; padding: 0; } ul.lim li { margin-bottom: 3pt; }
+  section { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+<h1>Informe de riego {{ "semanal" if c.report_type == "weekly" else "diario" }}</h1>
+<div class="meta">{{ c.plot_label }} · Recomendación del {{ c.origin_date | date_es }} (datos de las 05:00 UTC) · Plan del {{ c.period_start | date_es }} al {{ c.period_end | date_es }}</div>
+{% if c.is_stale %}
+<div class="stale">Este informe es del {{ c.origin_date | date_es }}; no es el informe de hoy ({{ c.today | date_es }}). No lo use como si fuera actual.</div>
+{% endif %}
+<div class="badges">
+  {% if c.indicative %}<span class="badge ind">INDICATIVA</span>{% endif %}
+  <span class="badge {{ 'bad' if c.validation_status == 'insufficient_data' else ('ok' if c.validation_status == 'validated' else 'ind') }}">
+    {% if c.validation_status == 'insufficient_data' %}DATOS INSUFICIENTES (insufficient_data){% else %}{{ c.validation_label | upper }}{% endif %}</span>
+</div>
+
+<section>
+<div class="decision">{{ c.decision_label }}</div>
+{% if text %}<p>{{ text.summary }}</p>{% endif %}
+</section>
+
+{% if text %}
+<h2>Motivo</h2>
+<p>{{ text.reason }}</p>
+<h2>Aviso</h2>
+<p>{{ text.warning }}</p>
+<p class="small">Texto redactado con {{ "un modelo de lenguaje (" ~ text.generator_version ~ ")" if text.generator == "llm" else "la plantilla de respaldo" }}; las cifras proceden del motor de riego ({{ c.method_version }}).</p>
+{% endif %}
+
+<h2>Día {{ c.first_day.day }}: {{ c.first_day.date | date_es }}</h2>
+<table>
+  <tr><th>Decisión</th><td>{{ c.first_day.decision_label }}</td></tr>
+  {% if c.first_day.reasons %}<tr><th>Motivo</th><td>{{ c.first_day.reasons | join("; ") }}</td></tr>{% endif %}
+  <tr><th>Humedad media prevista (zona radicular, índice 0 a 100)</th><td class="n">{{ c.first_day.moisture_mean | num }}</td></tr>
+  <tr><th>Fracción de agua útil gastada</th><td class="n">{{ (c.first_day.depletion_pct ~ " %") if c.first_day.depletion_pct is not none else "—" }}</td></tr>
+  <tr><th>Etapa del cultivo / Kc</th><td class="n">{{ c.first_day.stage | stage_es }} / {{ c.first_day.kc | num(2) }}</td></tr>
+  <tr><th>ET₀ prevista / ETc</th><td class="n">{{ c.first_day.eto_mm | num }} mm / {{ c.first_day.etc_mm | num }} mm</td></tr>
+  <tr><th>Lluvia prevista</th><td class="n">{{ c.first_day.rain_mm | num }} mm</td></tr>
+  <tr><th>Dosis neta / bruta{% if c.dose_on_wetted_strip %} (sobre la franja mojada){% endif %}</th><td class="n">{% if c.first_day.net_dose_mm is not none %}{{ c.first_day.net_dose_mm | num }} mm / {{ c.first_day.gross_dose_mm | num }} mm{% else %}sin dosis este día{% endif %}</td></tr>
+</table>
+
+{% if c.outlook %}
+<h2>Riego orientativo dentro del plan</h2>
+<table>
+  <tr><th>Primer día de riego previsto</th><td>Día {{ c.outlook.day }} ({{ c.outlook.date | date_es }})</td></tr>
+  <tr><th>Rango de días (anclajes ±10 %)</th><td>del día {{ c.outlook.day_min }} al día {{ c.outlook.day_max }}</td></tr>
+  <tr><th>Dosis neta / bruta</th><td class="n">{{ c.outlook.net_dose_mm | num }} mm / {{ c.outlook.gross_dose_mm | num }} mm</td></tr>
+  {% if c.outlook.net_dose_min_mm is not none %}<tr><th>Dosis neta según la sensibilidad</th><td class="n">de {{ c.outlook.net_dose_min_mm | num }} mm a {{ c.outlook.net_dose_max_mm | num }} mm</td></tr>{% endif %}
+</table>
+{% endif %}
+<div class="note">{{ c.uncertainty_note }}</div>
+{% if c.has_dose %}<div class="note">{{ c.dose_note }}</div>{% endif %}
+{% if c.decision == "insufficient_data" or not c.has_dose %}
+<p class="small">{% if c.validation_status == "insufficient_data" %}No hay dosis porque faltan datos: revise las limitaciones de abajo (cultivo, suelo, anclajes o predicciones de las sondas).{% else %}No se prevé un riego dentro de los siete días del plan con los datos actuales.{% endif %}</p>
+{% endif %}
+
+{% if charts.moisture %}<img class="chart" alt="Humedad prevista y umbral de riego" src="{{ charts.moisture }}">{% endif %}
+
+{% if c.report_type == "weekly" and c.other_days %}
+<h2>Resto de la semana</h2>
+<table>
+  <tr><th>Día</th><th>Fecha</th><th>Decisión</th><th>Dosis neta (mm)</th><th>Lluvia prevista (mm)</th></tr>
+  {% for d in c.other_days %}
+  <tr><td>{{ d.day }}</td><td>{{ d.date | date_es }}</td><td>{{ d.decision_label }}</td><td class="n">{{ d.net_dose_mm | num if d.net_dose_mm is not none else "—" }}</td><td class="n">{{ d.rain_mm | num }}</td></tr>
+  {% endfor %}
+</table>
+{% if charts.plan %}<img class="chart" alt="Plan de 7 días" src="{{ charts.plan }}">{% endif %}
+{% endif %}
+
+<h2>Error típico de la predicción de humedad</h2>
+{% if c.typical_error %}
+<table>
+  <tr><th>Horizonte</th>{% for e in c.typical_error %}<th>{{ e.horizon_days }} día{{ "s" if e.horizon_days > 1 }}</th>{% endfor %}</tr>
+  <tr><th>Error típico (puntos del índice)</th>{% for e in c.typical_error %}<td class="n">{{ e.mae | num(2) }}</td>{% endfor %}</tr>
+</table>
+<p class="small">Error absoluto medio del modelo en el conjunto de prueba (unidades no vistas al entrenar). Es una referencia de la incertidumbre, no un intervalo garantizado.</p>
+{% if charts.error %}<img class="chart" alt="Error típico por horizonte" src="{{ charts.error }}">{% endif %}
+{% else %}
+<p class="small">El error típico por horizonte no está disponible en este momento.</p>
+{% endif %}
+
+<h2>Limitaciones y supuestos del cálculo</h2>
+<ul class="lim">
+{% for lim in c.limitations if lim.highlighted %}<li><strong>{{ lim.code }}.</strong> {{ lim.message }}</li>{% endfor %}
+{% for lim in c.limitations if not lim.highlighted %}<li>{{ lim.message }}</li>{% endfor %}
+</ul>
+</body>
+</html>

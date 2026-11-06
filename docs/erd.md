@@ -15,6 +15,8 @@ erDiagram
     plot ||--o{ recommendation : "recibe"
     recommendation |o--o{ recommendation : "sustituye a"
     recommendation ||--o{ report : "sirve de base"
+    sensor ||--o{ ml_prediction : "tiene"
+    ml_model |o--o{ ml_prediction : "genera"
     knowledge_document ||--o{ knowledge_chunk : "se divide en"
 
     app_user {
@@ -44,6 +46,8 @@ erDiagram
         varchar soil_texture "pendiente"
         numeric irrigation_efficiency "pendiente"
         numeric flow_rate_m3_h "pendiente"
+        varchar plot_code UK "8 caracteres aleatorios; no da acceso"
+        smallint irrigation_interval_days "1 a 7; opcional"
     }
 
     sensor {
@@ -118,6 +122,39 @@ erDiagram
         varchar parameter_set_version
     }
 
+    ml_model {
+        bigint model_id PK
+        varchar algorithm "ridge, lightgbm o persistence"
+        smallint horizon_days "1 a 7"
+        timestamptz trained_at
+        date train_from
+        date train_to
+        varchar data_source
+        varchar moisture_unit
+        jsonb features
+        jsonb hyperparameters
+        jsonb metrics "contrato C4"
+        varchar artifact_path
+        varchar code_version
+        boolean is_active "uno por horizonte"
+    }
+
+    ml_prediction {
+        bigint prediction_id PK
+        bigint sensor_id FK
+        bigint model_id FK "opcional"
+        timestamptz origin_at "05:00 UTC"
+        smallint horizon_days "1 a 7"
+        date target_date "generada"
+        numeric moisture_pred "0 a 100; nulo si insufficient_data"
+        numeric base_moisture
+        timestamptz base_reading_at
+        varchar method "model o persistence_fallback"
+        varchar quality
+        jsonb limitations "lista de objetos con code"
+        timestamptz created_at
+    }
+
     report {
         bigint report_id PK
         bigint recommendation_id FK
@@ -171,6 +208,7 @@ erDiagram
 - `plot` es el centro del esquema: casi todo cuelga de ella. Como cada parcela pertenece a un único usuario, los permisos se comprueban con `plot.user_id`.
 - `job_run` no se relaciona con las demás tablas: es un registro de la operación de las tareas.
 - `recommendation` es inmutable (un disparador impide modificarla o borrarla). Un recálculo crea otra fila con `version` + 1 que apunta a la anterior con `supersedes_id`.
+- `ml_prediction` es inmutable (disparador) y única por sonda, origen y horizonte; `ml_model` tiene un solo modelo activo por horizonte (índice único parcial).
 - `report` solo se relaciona con `recommendation`: de ella obtiene la parcela y el periodo.
 - Las tablas del RAG (`knowledge_document`, `knowledge_chunk`) son independientes del resto: no cuelgan de ninguna parcela.
 - Unicidades: `forecast_data` (`plot_id`, `fecha`, `lead_days`, `source`), `historical_weather` (`plot_id`, `fecha`), `recommendation` (`plot_id`, `period_start`, `version`) y `report` (`recommendation_id`, `report_type`, `generator`, `generator_version`).

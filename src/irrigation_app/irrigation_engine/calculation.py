@@ -356,8 +356,8 @@ def _plot_limitations(
     if crop_name and (gc is None or gc.source == "assumption"):
         if gc is None:
             used = rv.kc_values(crop_name, rv.DEFAULT_KC_CASE)
-            msg = (f"No se conoce la cubierta vegetal entre las filas: se usa el caso «sin cubierta» (Kc {used[0]:.2f} / "
-                   f"{used[1]:.2f} / {used[2]:.2f}, Tabla 12), el más prudente.")
+            msg = (f"No se conoce la cubierta vegetal entre las filas: se usa el caso «sin cubierta» (Kc {rv.fmt_es(used[0], 2)} / "
+                   f"{rv.fmt_es(used[1], 2)} / {rv.fmt_es(used[2], 2)}, Tabla 12), el más prudente.")
         else:
             msg = rv.ground_cover_limitation(crop_name, gc.value)
         out.append(Limitation(code="assumed_ground_cover", message=msg, degrades_validation=True))
@@ -373,7 +373,7 @@ def _plot_limitations(
         out.append(Limitation(
             code="assumed_irrigation_efficiency",
             message="El tipo de riego es desconocido: se usa una eficiencia genérica de "
-            f"{rv.GENERIC_IRRIGATION_EFFICIENCY.value:.2f} (valor intermedio de la tabla de la FAO).",
+            f"{rv.fmt_es(rv.GENERIC_IRRIGATION_EFFICIENCY.value, 2)} (valor intermedio de la tabla de la FAO).",
             degrades_validation=True,
         ))
     anchors = plot.anchors
@@ -396,8 +396,8 @@ def _plot_limitations(
             d = depletion_fraction(m, anchors.upper.index, anchors.lower.index)
             out.append(Limitation(
                 code="upper_anchor_above_observed_max",
-                message=f"El suelo lleno real de la sonda queda cerca de {m:.1f} (máximo observado) y no en "
-                f"{anchors.upper.index:.1f}: con el suelo recién lleno la fracción gastada ya sale de {d:.2f} y el "
+                message=f"El suelo lleno real de la sonda queda cerca de {rv.fmt_es(m, 1)} (máximo observado) y no en "
+                f"{rv.fmt_es(anchors.upper.index, 1)}: con el suelo recién lleno la fracción gastada ya sale de {rv.fmt_es(d, 2)} y el "
                 f"agotamiento queda sobreestimado en unos {d * taw_mm:.0f} mm. "
                 + ("Con el goteo afecta a cuándo se cruza el umbral y al tope de agotamiento de la dosis, no a la "
                    "reposición de la ETc. " if localized else "La dosis queda sobreestimada en esa cantidad. ")
@@ -411,7 +411,7 @@ def _plot_limitations(
             code="localized_irrigation",
             message=(plot.localized_irrigation_note or "Riego localizado: la sonda mide un punto de la franja mojada.")
             + f" Las mm de la dosis son láminas sobre la franja mojada; repartidas sobre toda la superficie serían "
-            f"del orden de fw = {rv.WETTED_FRACTION_TRICKLE.value} veces esas mm (Tabla 20, supuesto).",
+            f"del orden de fw = {rv.fmt_es(rv.WETTED_FRACTION_TRICKLE.value)} veces esas mm (Tabla 20, supuesto).",
             params={"wetted_fraction_fw": rv.WETTED_FRACTION_TRICKLE.value},
         ))
     return out

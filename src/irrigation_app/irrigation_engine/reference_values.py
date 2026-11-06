@@ -23,6 +23,16 @@ from typing import Literal
 IRRIGATION_MANUAL = "FAO, Irrigation Water Management training manual (t7202e), Annex I"
 
 
+def fmt_es(value: float, decimals: int | None = None) -> str:
+    """Cifra para un texto al usuario, con coma decimal (el informe está en español).
+
+    Con `decimals` fija esos decimales; sin él conserva los que trae el número (`0.3` -> `0,3`).
+    Solo da formato a un texto: nunca se usa en campos numéricos ni en cálculos.
+    """
+    text = str(value) if decimals is None else f"{value:.{decimals}f}"
+    return text.replace(".", ",")
+
+
 class UnknownReferenceError(KeyError):
     """Cultivo, textura o tipo de riego que no están en las tablas."""
 
@@ -117,7 +127,7 @@ def field_capacity_and_wilting_point(name: str) -> tuple[Reference, Reference]:
     def mid(rng: tuple[float, float], label: str) -> Reference:
         return Reference(
             round(sum(rng) / 2, 3), "m3/m3", texture.source, "assumption",
-            f"{label}: intervalo de la tabla {rng[0]} a {rng[1]}; punto medio.",
+            f"{label}: intervalo de la tabla {fmt_es(rng[0])} a {fmt_es(rng[1])}; punto medio.",
         )
 
     return mid(texture.field_capacity, "θCC"), mid(texture.wilting_point, "θPMP")
@@ -210,9 +220,9 @@ def ground_cover_limitation(crop_name: str, ground_cover: str) -> str:
     label = "con cubierta vegetal activa" if _normalize(ground_cover) == "active_cover" else "sin cubierta"
     other_label = "sin cubierta" if label.startswith("con") else "con cubierta vegetal activa"
     return (
-        f"Cubierta vegetal entre las filas sin confirmar: se usa el caso «{label}» (Kc {used[0]:.2f} / {used[1]:.2f} / "
-        f"{used[2]:.2f}, Tabla 12). {other_label.capitalize()} el Kc de pleno verano sería {other[1]:.2f} "
-        f"en vez de {used[1]:.2f} y la dosis cambiaría en esa proporción ({other[1] / used[1] - 1:+.0%})."
+        f"Cubierta vegetal entre las filas sin confirmar: se usa el caso «{label}» (Kc {fmt_es(used[0], 2)} / {fmt_es(used[1], 2)} / "
+        f"{fmt_es(used[2], 2)}, Tabla 12). {other_label.capitalize()} el Kc de pleno verano sería {fmt_es(other[1], 2)} "
+        f"en vez de {fmt_es(used[1], 2)} y la dosis cambiaría en esa proporción ({other[1] / used[1] - 1:+.0%})."
     )
 
 
@@ -221,7 +231,7 @@ def root_depth_for_scheduling(crop_name: str) -> Reference:
     c = crop(crop_name)
     return Reference(
         c.root_depth_m[0], "m", c.sources["root_depth_m"], "verified",
-        f"Intervalo completo {c.root_depth_m[0]} a {c.root_depth_m[1]} m; se toma el menor (nota 1).",
+        f"Intervalo completo {fmt_es(c.root_depth_m[0])} a {fmt_es(c.root_depth_m[1])} m; se toma el menor (nota 1).",
     )
 
 
@@ -236,7 +246,7 @@ def depletion_fraction(crop_name: str, etc_mm_day: float | None = None) -> Refer
     note = "Valor de la tabla para ETc ≈ 5 mm/día."
     if etc_mm_day is not None:
         p = min(0.8, max(0.1, p + 0.04 * (5 - etc_mm_day)))
-        note = f"Ajustado a ETc = {etc_mm_day} mm/día con la nota 2 de la Tabla 22."
+        note = f"Ajustado a ETc = {fmt_es(etc_mm_day)} mm/día con la nota 2 de la Tabla 22."
     note += " No se reduce por suelo fino (el texto del capítulo 8 sugiere 5 a 10 %)."
     return Reference(round(p, 3), "fracción", c.sources["depletion_fraction"], "verified", note)
 
@@ -340,7 +350,7 @@ def drip_exposed_wetted_fraction(fc: float, fw: float | None = None) -> Referenc
     return Reference(
         round(base * (1 - 2 / 3 * fc), 4), "fracción",
         "FAO-56, capítulo 7, Tabla 20 y ejemplo 34: few = fw·[1 − (2/3)fc] para goteo", "assumption",
-        f"fw = {base}, fc = {fc}.",
+        f"fw = {fmt_es(base)}, fc = {fmt_es(fc)}.",
     )
 
 
